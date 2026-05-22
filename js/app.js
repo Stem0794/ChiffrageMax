@@ -3,7 +3,7 @@ import { Auth } from './auth.js';
 import { DriveConfig } from './drive-config.js';
 import { SheetsAPI, DriveAPI } from './api.js';
 import {
-  nouveauChiffrage, listChiffrages, setChiffrageStatus, deleteChiffrage,
+  nouveauChiffrage, listChiffrages, readChiffrageFile, setChiffrageStatus, deleteChiffrage,
   resolveMonthFolder, STATUS_OPTIONS,
 } from './chiffrage.js';
 import { extractSpreadsheetId, extractFolderId, cleanProjectName } from './utils.js';
@@ -713,12 +713,22 @@ async function createChiffrage() {
 
   busy(btn, true, 'Création…');
   try {
-    await nouveauChiffrage({ numDevis, client, projet, ticket, date, targetFolderId, phases: getPhases(), roles });
+    const created = await nouveauChiffrage({ numDevis, client, projet, ticket, date, targetFolderId, phases: getPhases(), roles });
     closeModal('newModal');
     toast('Chiffrage créé avec succès.', 'success');
     selectedClient = client;
+    if (![...$('clientSelector').options].some((o) => o.value === client)) {
+      refreshClientSelector();
+    }
     $('clientSelector').value = client;
-    await loadDashboard();
+    // Read only the new file and append it — avoids re-scanning every folder.
+    try {
+      const ch = await readChiffrageFile({ id: created.id, name: created.idChiffrage, webViewLink: created.url });
+      if (!chiffrages.some((c) => c.id === ch.id)) chiffrages.push(ch);
+      renderTable();
+    } catch {
+      await loadDashboard();
+    }
   } catch (e) {
     errEl.textContent = e.message;
     errEl.classList.remove('hidden');
