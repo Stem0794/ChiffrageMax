@@ -1,5 +1,6 @@
 import { Config } from './config.js';
 import { Auth } from './auth.js';
+import { DriveConfig } from './drive-config.js';
 import { SheetsAPI, DriveAPI } from './api.js';
 import {
   nouveauChiffrage, listChiffrages, setChiffrageStatus, deleteChiffrage, STATUS_OPTIONS,
@@ -74,6 +75,33 @@ function escHtml(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/* ---- Drive config sync ---- */
+async function syncFromDrive() {
+  $('userStatus').textContent = 'Synchronisation…';
+  try {
+    const remote = await DriveConfig.load();
+    if (remote) {
+      Config.fromDriveData(remote);
+    } else {
+      // No Drive file yet — push current localStorage state (first-run / migration)
+      await DriveConfig.save(Config.toDriveData());
+    }
+  } catch (e) {
+    console.warn('Sync Drive échoué :', e.message);
+    // Non-fatal: fall through and use whatever is in localStorage
+  } finally {
+    $('userStatus').textContent = 'Connecté';
+  }
+}
+
+async function saveConfigToDrive() {
+  try {
+    await DriveConfig.save(Config.toDriveData());
+  } catch (e) {
+    toast(`Config non sauvegardée dans Drive : ${e.message}`, 'error');
+  }
+}
+
 /* ---- Auth gate ---- */
 function showApp(signedIn) {
   $('loginPage').classList.toggle('hidden', signedIn);
@@ -82,9 +110,17 @@ function showApp(signedIn) {
   $('userStatus').textContent = signedIn ? 'Connecté' : 'Non connecté';
 }
 
-Auth.onChange((signedIn) => {
-  showApp(signedIn);
-  if (signedIn) { refreshClientSelector(); loadDashboard(); }
+Auth.onChange(async (signedIn) => {
+  if (!signedIn) {
+    DriveConfig.reset();
+    showApp(false);
+    return;
+  }
+  showApp(true);
+  await syncFromDrive();
+  refreshClientSelector();
+  refreshClientDatalist();
+  loadDashboard();
 });
 
 /* ---- Client selector ---- */
@@ -190,9 +226,8 @@ function parseDate(str) {
   const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) {
     const [, a, b, y] = m;
-    // If first part > 12 it's DD/MM/YYYY; if second part > 12 it's M/D/YYYY
     if (Number(a) > 12) return new Date(Number(y), Number(b) - 1, Number(a)).getTime();
-    return new Date(Number(y), Number(a) - 1, Number(b)).getTime(); // M/D/YYYY fallback
+    return new Date(Number(y), Number(a) - 1, Number(b)).getTime();
   }
   const d = new Date(str);
   return isNaN(d.getTime()) ? 0 : d.getTime();
@@ -363,7 +398,6 @@ async function saveField(ch, field, value) {
   }
 }
 
-// Convert various date string formats to YYYY-MM-DD for <input type="date">
 function toDateInputValue(str) {
   if (!str) return '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
@@ -371,14 +405,13 @@ function toDateInputValue(str) {
   if (parts) {
     const [, a, b, y] = parts;
     const na = Number(a), nb = Number(b);
-    if (na > 12) return `${y}-${b.padStart(2, '0')}-${a.padStart(2, '0')}`; // DD/MM/YYYY
-    if (nb > 12) return `${y}-${a.padStart(2, '0')}-${b.padStart(2, '0')}`; // M/D/YYYY
+    if (na > 12) return `${y}-${b.padStart(2, '0')}-${a.padStart(2, '0')}`;
+    if (nb > 12) return `${y}-${a.padStart(2, '0')}-${b.padStart(2, '0')}`;
   }
   const d = new Date(str);
   return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
 }
 
-// Format YYYY-MM-DD → DD/MM/YYYY for display
 function formatDateDisplay(iso) {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
@@ -461,7 +494,6 @@ function makeEditableCell(td, ch, field, type = 'text') {
     });
 
     if (type === 'client') {
-      // For select: save on change, cancel on blur-without-change
       inputEl.addEventListener('change', confirm);
       inputEl.addEventListener('blur', cancel);
     } else {
@@ -649,7 +681,7 @@ function renderClientRow(row, c, editing) {
       <button class="btn btn-sm btn-primary" data-save>✓</button>
       <button class="btn btn-sm btn-ghost" data-cancel>✕</button>
     `;
-    row.querySelector('[data-save]').addEventListener('click', () => {
+    row.querySelector('[data-save]').addEventListener('click', async () => {
       const newName = row.querySelector('.client-edit-name').value.trim();
       const newFolderRaw = row.querySelector('.client-edit-folder').value.trim();
       if (!newName || !newFolderRaw) { toast('Nom et dossier requis.', 'error'); return; }
@@ -659,6 +691,7 @@ function renderClientRow(row, c, editing) {
       refreshClientSelector();
       renderClientList();
       toast(`Client « ${newName} » mis à jour.`, 'success');
+      await saveConfigToDrive();
       if (Auth.isSignedIn()) loadDashboard();
     });
     row.querySelector('[data-cancel]').addEventListener('click', () => renderClientRow(row, c, false));
@@ -676,11 +709,12 @@ function renderClientRow(row, c, editing) {
     `;
     row.querySelector('[data-edit]').addEventListener('click', () => renderClientRow(row, c, true));
     row.querySelector('[data-roles]').addEventListener('click', () => openRolesModal(c.name));
-    row.querySelector('[data-delete]').addEventListener('click', () => {
+    row.querySelector('[data-delete]').addEventListener('click', async () => {
       Config.deleteClient(c.name);
       renderClientList();
       refreshClientDatalist();
       refreshClientSelector();
+      await saveConfigToDrive();
     });
   }
 }
@@ -696,21 +730,22 @@ function openSettings() {
   openModal('settingsModal');
 }
 
-function saveSettings() {
+async function saveSettings() {
   const rawTemplate = $('cfgTemplateId').value.trim();
   const rawRoot = $('cfgRootFolderId').value.trim();
   Config.save({
-    clientId: $('cfgClientId').value.trim(),
-    templateId: extractSpreadsheetId(rawTemplate) || rawTemplate,
+    clientId:     $('cfgClientId').value.trim(),
+    templateId:   extractSpreadsheetId(rawTemplate) || rawTemplate,
     rootFolderId: extractFolderId(rawRoot) || rawRoot,
   });
   closeModal('settingsModal');
   refreshClientDatalist();
   refreshClientSelector();
   toast('Configuration enregistrée.', 'success');
+  await saveConfigToDrive();
 }
 
-function addClient() {
+async function addClient() {
   const name = $('addClientName').value.trim();
   const folderRaw = $('addClientFolder').value.trim();
   if (!name || !folderRaw) { toast('Renseignez le nom et le dossier.', 'error'); return; }
@@ -722,6 +757,7 @@ function addClient() {
   refreshClientDatalist();
   refreshClientSelector();
   toast(`Client « ${name} » enregistré — scan des chiffrages en cours…`, 'success');
+  await saveConfigToDrive();
   if (Auth.isSignedIn()) loadDashboard();
 }
 
@@ -764,7 +800,7 @@ function renderRoleModalRows(roles) {
   });
 }
 
-function saveRoles() {
+async function saveRoles() {
   const rows = $('roleModalRows').querySelectorAll('.role-modal-row');
   const roles = Array.from(rows).map((row, i) => ({
     name:    row.querySelector('.rm-name').value.trim() || DEFAULT_ROLES[i]?.name || '',
@@ -775,6 +811,7 @@ function saveRoles() {
   closeModal('rolesModal');
   renderClientList();
   toast(`Rôles enregistrés pour « ${rolesClientTarget} ».`, 'success');
+  await saveConfigToDrive();
 }
 
 function resetAllRoles() {
@@ -804,17 +841,12 @@ function init() {
     renderTable();
   });
 
-  // Column header sort via event delegation
   document.querySelector('#chiffrageTable thead').addEventListener('click', (e) => {
     const th = e.target.closest('th[data-sort]');
     if (!th) return;
     const field = th.dataset.sort;
-    if (sortField === field) {
-      sortAsc = !sortAsc;
-    } else {
-      sortField = field;
-      sortAsc = true;
-    }
+    if (sortField === field) sortAsc = !sortAsc;
+    else { sortField = field; sortAsc = true; }
     renderTable();
   });
 
@@ -851,7 +883,14 @@ function init() {
   updateSortHeaders();
   renderFilters();
   showApp(Auth.isSignedIn());
-  if (Auth.isSignedIn()) { refreshClientSelector(); loadDashboard(); }
+  if (Auth.isSignedIn()) {
+    (async () => {
+      await syncFromDrive();
+      refreshClientSelector();
+      refreshClientDatalist();
+      loadDashboard();
+    })();
+  }
 }
 
 init();

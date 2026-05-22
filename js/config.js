@@ -94,4 +94,24 @@ export const Config = {
     );
     this.saveClients(clients);
   },
+
+  // Serialise everything except clientId for Drive persistence.
+  toDriveData() {
+    const c = this.load();
+    return {
+      templateId:   c.templateId   || '',
+      rootFolderId: c.rootFolderId || '',
+      clients:      this.getClients(),
+    };
+  },
+
+  // Restore from Drive data — never touches clientId (stays browser-local).
+  fromDriveData(data) {
+    if (!data) return;
+    this.save({
+      templateId:   data.templateId   ?? '',
+      rootFolderId: data.rootFolderId ?? '',
+    });
+    if (Array.isArray(data.clients)) this.saveClients(data.clients);
+  },
 };
