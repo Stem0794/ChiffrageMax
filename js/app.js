@@ -3,7 +3,8 @@ import { Auth } from './auth.js';
 import { DriveConfig } from './drive-config.js';
 import { SheetsAPI, DriveAPI } from './api.js';
 import {
-  nouveauChiffrage, listChiffrages, setChiffrageStatus, deleteChiffrage, STATUS_OPTIONS,
+  nouveauChiffrage, listChiffrages, setChiffrageStatus, deleteChiffrage,
+  resolveMonthFolder, STATUS_OPTIONS,
 } from './chiffrage.js';
 import { extractSpreadsheetId, extractFolderId, cleanProjectName } from './utils.js';
 
@@ -421,13 +422,39 @@ function buildChiffrageFileName(projet, dateStr) {
     : `CHI- ${cleanProjectName(projet || '')}`;
 }
 
+// Parse any stored date string into {yearStr, monthStr} for folder resolution.
+function parseDateForFolder(str) {
+  if (!str) return null;
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return { yearStr: iso[1], monthStr: `${iso[1]}-${iso[2]}` };
+  const parts = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (parts) {
+    const [, a, b, y] = parts.map(Number);
+    const month = a > 12 ? b : (b > 12 ? a : b); // DD/MM or M/D heuristic
+    const yearStr = String(y);
+    return { yearStr, monthStr: `${yearStr}-${String(month).padStart(2, '0')}` };
+  }
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const yearStr = String(d.getFullYear());
+    return { yearStr, monthStr: `${yearStr}-${String(d.getMonth() + 1).padStart(2, '0')}` };
+  }
+  return null;
+}
+
 async function saveField(ch, field, value) {
   const cellAddr = FIELD_CELL[field];
   if (!cellAddr) throw new Error(`Champ inconnu : ${field}`);
   await SheetsAPI.updateValues(ch.id, `${ch.sheetName}!${cellAddr}`, [[value]]);
   if (field === 'client') {
-    const newFolderId = Config.getClientFolder(value);
-    if (newFolderId) await DriveAPI.moveFile(ch.id, newFolderId);
+    const baseFolderId = Config.getClientFolder(value);
+    if (baseFolderId) {
+      const ym = parseDateForFolder(ch.date);
+      const destFolderId = ym
+        ? await resolveMonthFolder(ym.yearStr, ym.monthStr, baseFolderId)
+        : baseFolderId;
+      await DriveAPI.moveFile(ch.id, destFolderId);
+    }
   }
   if (field === 'projet' || field === 'date') {
     const projet  = field === 'projet' ? value : ch.projet;
@@ -572,13 +599,17 @@ async function onDeleteChiffrage(ch, btn) {
   busy(btn, true);
   try {
     await deleteChiffrage(ch.id);
-    chiffrages = chiffrages.filter((c) => c.id !== ch.id);
-    renderTable();
-    toast('Chiffrage supprimé.', 'success');
   } catch (e) {
-    toast(e.message, 'error');
-    busy(btn, false);
+    // 404 = file already gone from Drive — remove the stale dashboard row silently
+    if (!e.message.includes('404')) {
+      toast(e.message, 'error');
+      busy(btn, false);
+      return;
+    }
   }
+  chiffrages = chiffrages.filter((c) => c.id !== ch.id);
+  renderTable();
+  toast('Chiffrage supprimé.', 'success');
 }
 
 /* ---- Phase builder ---- */

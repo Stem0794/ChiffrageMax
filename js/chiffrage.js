@@ -29,12 +29,11 @@ export async function getModelSheet() {
   return sheet.properties;
 }
 
-// Resolve (creating if needed) the year/month subfolders under the configured root.
-async function resolveMonthFolder(yearStr, monthStr) {
-  const rootId = Config.get('rootFolderId');
-
-  let res = await DriveAPI.listFolders(yearStr, rootId);
-  const yearFolder = res.files?.[0] || (await DriveAPI.createFolder(yearStr, rootId));
+// Resolve (creating if needed) year/month subfolders inside baseFolderId.
+// Structure: baseFolderId / yearStr (e.g. "2026") / monthStr (e.g. "2026-05")
+export async function resolveMonthFolder(yearStr, monthStr, baseFolderId) {
+  let res = await DriveAPI.listFolders(yearStr, baseFolderId);
+  const yearFolder = res.files?.[0] || (await DriveAPI.createFolder(yearStr, baseFolderId));
 
   res = await DriveAPI.listFolders(monthStr, yearFolder.id);
   const monthFolder = res.files?.[0] || (await DriveAPI.createFolder(monthStr, yearFolder.id));
@@ -242,12 +241,13 @@ export async function nouveauChiffrage(entry) {
 
   const idChiffrage = `CHI-${dateStrId}- ${cleanProjectName(projet)}`;
 
-  // Resolve target Drive folder.
+  // Resolve target Drive folder — always use year/month subfolders.
+  const baseFolder = targetFolderId || Config.get('rootFolderId');
   let destFolderId;
   try {
-    destFolderId = targetFolderId || await resolveMonthFolder(yearStr, monthStr);
+    destFolderId = await resolveMonthFolder(yearStr, monthStr, baseFolder);
   } catch (e) {
-    throw new Error(`Impossible de résoudre le dossier Drive racine : ${e.message}`);
+    throw new Error(`Impossible de résoudre le dossier Drive : ${e.message}`);
   }
 
   // Create the new spreadsheet, copy the model sheet from the template, rename, drop default sheet.
