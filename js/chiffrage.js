@@ -384,6 +384,13 @@ export async function readChiffrageFile(file) {
   };
 }
 
+// Re-read just the live total amount for one chiffrage (single API call).
+export async function readChiffrageMontant(fileId, sheetName) {
+  const sn = `'${(sheetName || 'Chiffrage').replace(/'/g, "''")}'`;
+  const res = await SheetsAPI.getValues(fileId, sn);
+  return extractMontant(res.values || []);
+}
+
 // Find the total amount (port of getMontantFromChiffrage's scan) from sheet values.
 function extractMontant(data) {
   let buildCandidate = 0;

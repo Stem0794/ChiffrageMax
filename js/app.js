@@ -3,8 +3,8 @@ import { Auth } from './auth.js';
 import { DriveConfig } from './drive-config.js';
 import { SheetsAPI, DriveAPI } from './api.js';
 import {
-  nouveauChiffrage, listChiffrages, readChiffrageFile, setChiffrageStatus, deleteChiffrage,
-  resolveMonthFolder, STATUS_OPTIONS,
+  nouveauChiffrage, listChiffrages, readChiffrageFile, readChiffrageMontant,
+  setChiffrageStatus, deleteChiffrage, resolveMonthFolder, STATUS_OPTIONS,
 } from './chiffrage.js';
 import { extractSpreadsheetId, extractFolderId, cleanProjectName } from './utils.js';
 
@@ -344,9 +344,11 @@ function renderTable() {
     }
     tr.appendChild(tdFile);
 
-    // Amount
+    // Amount — click to re-fetch the live total from the sheet
     const tdMontant = cell(formatMontant(ch.montant));
-    tdMontant.className = 'amount';
+    tdMontant.className = 'amount montant-cell';
+    tdMontant.title = 'Cliquer pour actualiser le montant';
+    tdMontant.addEventListener('click', () => refreshMontant(ch, tdMontant));
     tr.appendChild(tdMontant);
 
     // Delete
@@ -373,6 +375,44 @@ function formatMontant(v) {
   const n = typeof v === 'number' ? v : parseFloat(String(v || '').replace(',', '.'));
   if (!Number.isFinite(n) || n === 0) return '—';
   return n.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' €';
+}
+
+// Re-fetch the live total for a single row on demand.
+async function refreshMontant(ch, td) {
+  const prev = td.textContent;
+  td.textContent = '…';
+  try {
+    ch.montant = await readChiffrageMontant(ch.id, ch.sheetName);
+    td.textContent = formatMontant(ch.montant);
+  } catch (e) {
+    td.textContent = prev;
+    toast(e.message, 'error');
+  }
+}
+
+// Re-fetch totals for the currently visible chiffrages (on tab refocus).
+let refreshingMontants = false;
+let lastMontantRefresh = 0;
+async function refreshVisibleMontants() {
+  if (refreshingMontants || dashboardLoading || !Auth.isSignedIn()) return;
+  const now = Date.now();
+  if (now - lastMontantRefresh < 8000) return; // throttle rapid tab switches
+  const visible = visibleChiffrages();
+  if (!visible.length) return;
+  lastMontantRefresh = now;
+  refreshingMontants = true;
+  try {
+    let changed = false;
+    for (const ch of visible) {
+      try {
+        const m = await readChiffrageMontant(ch.id, ch.sheetName);
+        if (m !== ch.montant) { ch.montant = m; changed = true; }
+      } catch { /* skip individual failures */ }
+    }
+    if (changed) renderTable();
+  } finally {
+    refreshingMontants = false;
+  }
 }
 
 const STATUS_STYLES = {
@@ -940,6 +980,11 @@ function init() {
   });
 
   $('btnRefresh').addEventListener('click', loadDashboard);
+
+  // Re-read live amounts when returning to the dashboard tab.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshVisibleMontants();
+  });
 
   $('btnNew').addEventListener('click', () => {
     $('newError').classList.add('hidden');
