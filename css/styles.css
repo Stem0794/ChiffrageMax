@@ -132,11 +132,29 @@ body {
   padding: 24px; width: 100%; max-width: 460px;
   box-shadow: 0 10px 40px rgba(0,0,0,.2);
 }
+.modal-card--tall { max-height: 90vh; overflow-y: auto; }
 .modal-card h2 { margin-top: 0; font-size: 18px; }
+.modal-card h3 { font-size: 14px; margin: 0 0 8px; }
 .modal-card label { display: block; margin-bottom: 14px; font-size: 13px; color: var(--muted); }
 .modal-card label input { margin-top: 4px; color: var(--ink); }
 .field-hint { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
+
+.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0 16px; }
+.section-title { font-size: 14px; margin: 0 0 4px; color: var(--ink); }
+
+.client-list { margin-bottom: 10px; }
+.client-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.client-row:last-child { border-bottom: none; }
+.client-name { font-weight: 600; min-width: 90px; }
+.client-folder { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 12px; }
+.client-add-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.input-sm { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 13px; min-width: 0; }
+.input-sm--grow { flex: 1; }
+.btn-sm { padding: 6px 12px; font-size: 13px; white-space: nowrap; }
 
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);

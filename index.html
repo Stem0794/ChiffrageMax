@@ -92,7 +92,7 @@
 
   <!-- Settings modal -->
   <div id="settingsModal" class="modal hidden">
-    <div class="modal-card">
+    <div class="modal-card modal-card--tall">
       <h2>⚙️ Configuration</h2>
       <label>OAuth Client ID Google
         <input id="cfgClientId" type="text" placeholder="xxxxx.apps.googleusercontent.com" />
@@ -100,10 +100,22 @@
       <label>ID du classeur (Dashboard)
         <input id="cfgSpreadsheetId" type="text" placeholder="ID du Google Sheet contenant Chiffrage, ConfigPhases…" />
       </label>
-      <label>ID du dossier Drive racine
-        <input id="cfgRootFolderId" type="text" placeholder="ID du dossier où créer les chiffrages" />
+      <label>Dossier Drive racine (fallback)
+        <input id="cfgRootFolderId" type="text" placeholder="ID du dossier utilisé si le client n'a pas de dossier configuré" />
       </label>
       <p class="hint">Ces valeurs sont stockées uniquement dans votre navigateur (localStorage).</p>
+
+      <hr class="divider" />
+
+      <h3 class="section-title">📁 Dossiers par client</h3>
+      <p class="hint" style="margin-top:0">Chaque client peut avoir son propre dossier Drive racine. Les sous-dossiers année / mois y seront créés automatiquement.</p>
+      <div id="clientList" class="client-list"></div>
+      <div class="client-add-row">
+        <input id="addClientName" type="text" placeholder="Nom du client" class="input-sm" />
+        <input id="addClientFolder" type="text" placeholder="URL ou ID du dossier Drive" class="input-sm input-sm--grow" />
+        <button id="btnAddClient" class="btn btn-primary btn-sm">Ajouter</button>
+      </div>
+
       <div class="modal-actions">
         <button id="btnSaveSettings" class="btn btn-primary">Enregistrer</button>
         <button id="btnCloseSettings" class="btn btn-ghost">Fermer</button>
@@ -116,13 +128,16 @@
     <div class="modal-card">
       <h2>➕ Nouveau chiffrage</h2>
       <label>N° devis<input id="newNumDevis" type="text" /></label>
-      <label>Client *<input id="newClient" type="text" /></label>
+      <label>Client *
+        <input id="newClient" type="text" list="clientDatalist" autocomplete="off" />
+        <datalist id="clientDatalist"></datalist>
+      </label>
       <label>Projet *<input id="newProjet" type="text" /></label>
       <label>Ticket<input id="newTicket" type="text" /></label>
       <label>Date<input id="newDate" type="date" /></label>
       <label>Dossier Drive
-        <input id="newFolderId" type="text" placeholder="URL ou ID du dossier (optionnel)" />
-        <span class="field-hint">Si renseigné, le fichier est créé directement dans ce dossier. Sinon, il est rangé sous racine / année / mois.</span>
+        <input id="newFolderId" type="text" placeholder="Auto-rempli selon le client, ou saisissez un ID/URL" />
+        <span class="field-hint" id="folderHint">Laissez vide pour utiliser le dossier racine global.</span>
       </label>
       <p class="hint">Un nouveau classeur sera créé à partir de « ModeleChiffrage » et ajouté au tableau de bord.</p>
       <div id="newError" class="banner banner-error hidden"></div>

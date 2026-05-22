@@ -226,7 +226,8 @@ async function createChiffrage() {
   const dateVal = $('newDate').value;
   const date = dateVal ? new Date(`${dateVal}T00:00:00`) : null;
   const folderRaw = $('newFolderId').value.trim();
-  const targetFolderId = extractFolderId(folderRaw) || null;
+  // Priority: explicit folder field → client-level folder config → fall back to root/year/month
+  const targetFolderId = extractFolderId(folderRaw) || Config.getClientFolder(client) || null;
 
   if (!client || !projet) {
     errEl.textContent = 'Le Client et le Projet sont obligatoires.';
@@ -308,11 +309,49 @@ async function colorPlanning() {
 function openModal(id) { $(id).classList.remove('hidden'); }
 function closeModal(id) { $(id).classList.add('hidden'); }
 
+function renderClientList() {
+  const container = $('clientList');
+  const clients = Config.getClients();
+  if (!clients.length) {
+    container.innerHTML = '<p class="hint" style="margin:0 0 8px">Aucun client configuré.</p>';
+    return;
+  }
+  container.innerHTML = clients.map((c) => `
+    <div class="client-row">
+      <span class="client-name">${escHtml(c.name)}</span>
+      <span class="client-folder" title="${escHtml(c.folderId)}">${escHtml(c.folderId)}</span>
+      <button class="btn btn-sm" data-delete="${escHtml(c.name)}">✕</button>
+    </div>
+  `).join('');
+  container.querySelectorAll('[data-delete]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      Config.deleteClient(btn.dataset.delete);
+      renderClientList();
+      refreshClientDatalist();
+    });
+  });
+}
+
+function refreshClientDatalist() {
+  const dl = $('clientDatalist');
+  if (!dl) return;
+  dl.innerHTML = Config.getClients()
+    .map((c) => `<option value="${escHtml(c.name)}">`)
+    .join('');
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function openSettings() {
   const c = Config.load();
   $('cfgClientId').value = c.clientId;
   $('cfgSpreadsheetId').value = c.spreadsheetId;
   $('cfgRootFolderId').value = c.rootFolderId;
+  $('addClientName').value = '';
+  $('addClientFolder').value = '';
+  renderClientList();
   openModal('settingsModal');
 }
 
@@ -324,8 +363,42 @@ function saveSettings() {
   });
   closeModal('settingsModal');
   refreshConfigWarning();
+  refreshClientDatalist();
   toast('Configuration enregistrée.', 'success');
   if (Auth.isSignedIn()) loadDashboard();
+}
+
+function addClient() {
+  const name = $('addClientName').value.trim();
+  const folderRaw = $('addClientFolder').value.trim();
+  if (!name || !folderRaw) { toast('Renseignez le nom et le dossier.', 'error'); return; }
+  const folderId = extractFolderId(folderRaw) || folderRaw;
+  Config.upsertClient(name, folderId);
+  $('addClientName').value = '';
+  $('addClientFolder').value = '';
+  renderClientList();
+  refreshClientDatalist();
+  toast(`Client « ${name} » enregistré.`, 'success');
+}
+
+/* ---------- Auto-fill folder from client ---------- */
+let folderAutoFilled = false;
+
+function onClientInput() {
+  const clientName = $('newClient').value.trim();
+  const folderInput = $('newFolderId');
+  const hint = $('folderHint');
+  const configured = Config.getClientFolder(clientName);
+
+  if (configured) {
+    folderInput.value = configured;
+    folderAutoFilled = true;
+    hint.textContent = `Dossier configuré pour « ${clientName} ». Modifiable.`;
+  } else if (folderAutoFilled) {
+    folderInput.value = '';
+    folderAutoFilled = false;
+    hint.textContent = 'Laissez vide pour utiliser le dossier racine global.';
+  }
 }
 
 /* ---------- Wire up ---------- */
@@ -345,6 +418,7 @@ function init() {
   $('openSettingsLink').addEventListener('click', openSettings);
   $('btnSaveSettings').addEventListener('click', saveSettings);
   $('btnCloseSettings').addEventListener('click', () => closeModal('settingsModal'));
+  $('btnAddClient').addEventListener('click', addClient);
 
   $('btnRefresh').addEventListener('click', loadDashboard);
   $('btnUpdateAll').addEventListener('click', updateAllMontants);
@@ -352,9 +426,15 @@ function init() {
   $('btnNew').addEventListener('click', () => {
     if (!Auth.isSignedIn()) { toast('Connectez-vous d\'abord.', 'error'); return; }
     $('newError').classList.add('hidden');
+    $('folderHint').textContent = 'Laissez vide pour utiliser le dossier racine global.';
+    folderAutoFilled = false;
     ['newNumDevis', 'newClient', 'newProjet', 'newTicket', 'newDate', 'newFolderId'].forEach((id) => { $(id).value = ''; });
     openModal('newModal');
   });
+  $('newClient').addEventListener('input', onClientInput);
+  $('newClient').addEventListener('change', onClientInput);
+  $('newFolderId').addEventListener('input', () => { folderAutoFilled = false; });
+
   $('btnCreate').addEventListener('click', createChiffrage);
   $('btnCloseNew').addEventListener('click', () => closeModal('newModal'));
 
@@ -363,6 +443,7 @@ function init() {
   $('btnColorPlanning').addEventListener('click', colorPlanning);
 
   refreshConfigWarning();
+  refreshClientDatalist();
 }
 
 init();
