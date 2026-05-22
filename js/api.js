@@ -150,6 +150,13 @@ export const DriveAPI = {
     return gfetch(`${DRIVE}/${fileId}?${params.toString()}`, { method: 'PATCH', body: '{}' });
   },
 
+  renameFile(fileId, name) {
+    return gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    });
+  },
+
   deleteFile(fileId) {
     return gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, { method: 'DELETE' });
   },

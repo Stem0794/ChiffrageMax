@@ -5,7 +5,7 @@ import { SheetsAPI, DriveAPI } from './api.js';
 import {
   nouveauChiffrage, listChiffrages, setChiffrageStatus, deleteChiffrage, STATUS_OPTIONS,
 } from './chiffrage.js';
-import { extractSpreadsheetId, extractFolderId } from './utils.js';
+import { extractSpreadsheetId, extractFolderId, cleanProjectName } from './utils.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -393,6 +393,34 @@ function applyStatusStyle(select, value) {
 /* ---- Inline cell editing ---- */
 const FIELD_CELL = { numDevis: 'C5', client: 'C1', projet: 'C2', ticket: 'C3', date: 'C4' };
 
+// Rebuild the CHI-DD/MM/YY- Projet filename from any stored date format.
+function buildChiffrageFileName(projet, dateStr) {
+  let dateId = '';
+  if (dateStr) {
+    const iso = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) {
+      dateId = `${iso[3]}/${iso[2]}/${String(iso[1]).slice(-2)}`;
+    } else {
+      const parts = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      const d = parts
+        ? (() => {
+            const [, a, b, y] = parts.map(Number);
+            if (a > 12) return new Date(y, b - 1, a); // DD/MM/YYYY
+            if (b > 12) return new Date(y, a - 1, b); // M/D/YYYY
+            return new Date(y, b - 1, a);              // assume DD/MM/YYYY
+          })()
+        : new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        const pad = (n) => String(n).padStart(2, '0');
+        dateId = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${String(d.getFullYear()).slice(-2)}`;
+      }
+    }
+  }
+  return dateId
+    ? `CHI-${dateId}- ${cleanProjectName(projet || '')}`
+    : `CHI- ${cleanProjectName(projet || '')}`;
+}
+
 async function saveField(ch, field, value) {
   const cellAddr = FIELD_CELL[field];
   if (!cellAddr) throw new Error(`Champ inconnu : ${field}`);
@@ -400,6 +428,13 @@ async function saveField(ch, field, value) {
   if (field === 'client') {
     const newFolderId = Config.getClientFolder(value);
     if (newFolderId) await DriveAPI.moveFile(ch.id, newFolderId);
+  }
+  if (field === 'projet' || field === 'date') {
+    const projet  = field === 'projet' ? value : ch.projet;
+    const dateStr = field === 'date'   ? value : ch.date;
+    const newName = buildChiffrageFileName(projet, dateStr);
+    await DriveAPI.renameFile(ch.id, newName);
+    ch.name = newName;
   }
 }
 
@@ -481,10 +516,16 @@ function makeEditableCell(td, ch, field, type = 'text') {
       if (!newVal || newVal === prev) { td.textContent = prev; return; }
       td.textContent = '…';
       try {
+        const nameBefore = ch.name;
         await saveField(ch, field, newVal);
         const display = type === 'date' ? formatDateDisplay(newVal) : newVal;
         ch[field] = display;
         td.textContent = display;
+        // If saveField renamed the Drive file, refresh the filename cell in the same row
+        if (ch.name !== nameBefore) {
+          const nameTd = td.closest('tr')?.querySelector('td:first-child');
+          if (nameTd) nameTd.textContent = ch.name;
+        }
         toast('Modifié.', 'success');
         if (field === 'client') renderTable();
       } catch (e) {
