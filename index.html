@@ -56,32 +56,24 @@
         </div>
       </div>
 
-      <!-- Filter / sort bar -->
+      <!-- Filter bar -->
       <div class="filter-bar">
         <div id="statusPills" class="status-pills"></div>
-        <select id="sortSelect" class="input-sm sort-select">
-          <option value="name-desc">Nom ↓</option>
-          <option value="name-asc">Nom ↑</option>
-          <option value="date-desc">Date ↓</option>
-          <option value="date-asc">Date ↑</option>
-          <option value="montant-desc">Montant ↓</option>
-          <option value="montant-asc">Montant ↑</option>
-        </select>
       </div>
 
       <div class="table-wrap">
         <table id="chiffrageTable" class="data-table">
           <thead>
             <tr>
-              <th class="col-id">Nom du fichier</th>
-              <th class="col-devis">N° devis</th>
-              <th class="col-client">Client</th>
-              <th class="col-projet">Projet</th>
+              <th class="col-id    th-sortable" data-sort="name"     data-label="Nom du fichier">Nom du fichier</th>
+              <th class="col-devis th-sortable" data-sort="numDevis" data-label="N° devis">N° devis</th>
+              <th class="col-client th-sortable" data-sort="client"  data-label="Client">Client</th>
+              <th class="col-projet th-sortable" data-sort="projet"  data-label="Projet">Projet</th>
               <th class="col-ticket">Ticket</th>
-              <th class="col-date">Date</th>
+              <th class="col-date  th-sortable" data-sort="date"     data-label="Date">Date</th>
               <th class="col-status">Statut</th>
               <th class="col-link">Fichier</th>
-              <th class="col-amount amount">Montant (€)</th>
+              <th class="col-amount amount th-sortable" data-sort="montant" data-label="Montant (€)">Montant (€)</th>
               <th class="col-actions"></th>
             </tr>
           </thead>

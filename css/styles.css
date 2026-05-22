@@ -93,7 +93,11 @@ a:visited { color: #a18aff; }
   white-space: nowrap;
 }
 .status-pill:hover { border-color: var(--primary); color: var(--ink); }
-.sort-select { width: auto; min-width: 140px; }
+
+/* Sortable column headers */
+.th-sortable { cursor: pointer; user-select: none; }
+.th-sortable:hover { color: var(--ink); }
+.th-sort-active { color: var(--primary) !important; }
 
 /* ---- Buttons ---- */
 .btn {

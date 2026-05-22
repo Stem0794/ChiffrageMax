@@ -11,6 +11,8 @@ const $ = (id) => document.getElementById(id);
 let chiffrages = [];
 let selectedClient = '';
 let filterStatuses = new Set();
+let sortField = 'name';
+let sortAsc = true;
 
 /* ---- Roles ---- */
 const DEFAULT_ROLES = [
@@ -125,50 +127,7 @@ async function loadDashboard() {
   }
 }
 
-/* ---- Filters / sort ---- */
-function parseDate(str) {
-  if (!str) return 0;
-  const m = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])).getTime();
-  const d = new Date(str);
-  return isNaN(d.getTime()) ? 0 : d.getTime();
-}
-
-function visibleChiffrages() {
-  let list = chiffrages;
-
-  if (selectedClient) {
-    const key = selectedClient.trim().toLowerCase();
-    list = list.filter((c) => (c.client || '').trim().toLowerCase() === key);
-  }
-
-  if (filterStatuses.size > 0) {
-    list = list.filter((c) => filterStatuses.has(c.status || ''));
-  }
-
-  const sortVal = $('sortSelect')?.value || 'name-desc';
-  const dashIdx = sortVal.lastIndexOf('-');
-  const field = sortVal.slice(0, dashIdx);
-  const asc   = sortVal.slice(dashIdx + 1) === 'asc';
-
-  return [...list].sort((a, b) => {
-    let va, vb;
-    if (field === 'montant') {
-      va = typeof a.montant === 'number' ? a.montant : parseFloat(String(a.montant || '').replace(',', '.')) || 0;
-      vb = typeof b.montant === 'number' ? b.montant : parseFloat(String(b.montant || '').replace(',', '.')) || 0;
-    } else if (field === 'date') {
-      va = parseDate(a.date);
-      vb = parseDate(b.date);
-    } else {
-      va = (a.name || '').toLowerCase();
-      vb = (b.name || '').toLowerCase();
-    }
-    if (va < vb) return asc ? -1 : 1;
-    if (va > vb) return asc ? 1 : -1;
-    return 0;
-  });
-}
-
+/* ---- Filters ---- */
 function renderFilters() {
   const pillsEl = $('statusPills');
   pillsEl.innerHTML = '';
@@ -202,8 +161,63 @@ function renderFilters() {
   });
 }
 
+/* ---- Sort ---- */
+function updateSortHeaders() {
+  document.querySelectorAll('th[data-sort]').forEach((th) => {
+    const field = th.dataset.sort;
+    const label = th.dataset.label;
+    const active = field === sortField;
+    th.textContent = active ? `${label} ${sortAsc ? '↑' : '↓'}` : label;
+    th.classList.toggle('th-sort-active', active);
+  });
+}
+
+function parseDate(str) {
+  if (!str) return 0;
+  const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    const [, a, b, y] = m;
+    // If first part > 12 it's DD/MM/YYYY; if second part > 12 it's M/D/YYYY
+    if (Number(a) > 12) return new Date(Number(y), Number(b) - 1, Number(a)).getTime();
+    return new Date(Number(y), Number(a) - 1, Number(b)).getTime(); // M/D/YYYY fallback
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function visibleChiffrages() {
+  let list = chiffrages;
+
+  if (selectedClient) {
+    const key = selectedClient.trim().toLowerCase();
+    list = list.filter((c) => (c.client || '').trim().toLowerCase() === key);
+  }
+
+  if (filterStatuses.size > 0) {
+    list = list.filter((c) => filterStatuses.has(c.status || ''));
+  }
+
+  return [...list].sort((a, b) => {
+    let va, vb;
+    if (sortField === 'montant') {
+      va = typeof a.montant === 'number' ? a.montant : parseFloat(String(a.montant || '').replace(',', '.')) || 0;
+      vb = typeof b.montant === 'number' ? b.montant : parseFloat(String(b.montant || '').replace(',', '.')) || 0;
+    } else if (sortField === 'date') {
+      va = parseDate(a.date);
+      vb = parseDate(b.date);
+    } else {
+      va = String(a[sortField] || '').toLowerCase();
+      vb = String(b[sortField] || '').toLowerCase();
+    }
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+}
+
 /* ---- Table rendering ---- */
 function renderTable() {
+  updateSortHeaders();
   const body = $('chiffrageBody');
   body.innerHTML = '';
   const visible = visibleChiffrages();
@@ -219,28 +233,26 @@ function renderTable() {
   for (const ch of visible) {
     const tr = document.createElement('tr');
 
-    // Filename — not directly editable (would need Drive rename)
     tr.appendChild(cell(ch.name));
 
-    // Editable fields
     const tdDevis = cell(ch.numDevis);
-    makeEditableCell(tdDevis, ch, 'numDevis');
+    makeEditableCell(tdDevis, ch, 'numDevis', 'text');
     tr.appendChild(tdDevis);
 
     const tdClient = cell(ch.client);
-    makeEditableCell(tdClient, ch, 'client');
+    makeEditableCell(tdClient, ch, 'client', 'client');
     tr.appendChild(tdClient);
 
     const tdProjet = cell(ch.projet);
-    makeEditableCell(tdProjet, ch, 'projet');
+    makeEditableCell(tdProjet, ch, 'projet', 'text');
     tr.appendChild(tdProjet);
 
     const tdTicket = cell(ch.ticket);
-    makeEditableCell(tdTicket, ch, 'ticket');
+    makeEditableCell(tdTicket, ch, 'ticket', 'text');
     tr.appendChild(tdTicket);
 
     const tdDate = cell(ch.date);
-    makeEditableCell(tdDate, ch, 'date');
+    makeEditableCell(tdDate, ch, 'date', 'date');
     tr.appendChild(tdDate);
 
     // Status select
@@ -329,26 +341,71 @@ async function saveField(ch, field, value) {
   await SheetsAPI.updateValues(ch.id, `${ch.sheetName}!${cellAddr}`, [[value]]);
   if (field === 'client') {
     const newFolderId = Config.getClientFolder(value);
-    if (newFolderId) {
-      await DriveAPI.moveFile(ch.id, newFolderId);
-    }
+    if (newFolderId) await DriveAPI.moveFile(ch.id, newFolderId);
   }
 }
 
-function makeEditableCell(td, ch, field) {
+// Convert various date string formats to YYYY-MM-DD for <input type="date">
+function toDateInputValue(str) {
+  if (!str) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const parts = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (parts) {
+    const [, a, b, y] = parts;
+    const na = Number(a), nb = Number(b);
+    if (na > 12) return `${y}-${b.padStart(2, '0')}-${a.padStart(2, '0')}`; // DD/MM/YYYY
+    if (nb > 12) return `${y}-${a.padStart(2, '0')}-${b.padStart(2, '0')}`; // M/D/YYYY
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+}
+
+// Format YYYY-MM-DD → DD/MM/YYYY for display
+function formatDateDisplay(iso) {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
+function makeEditableCell(td, ch, field, type = 'text') {
   td.classList.add('editable-cell');
   td.addEventListener('click', () => {
     if (td.classList.contains('editing')) return;
     const prev = String(ch[field] ?? '');
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = prev;
-    input.className = 'inline-edit-input';
+
+    let inputEl;
+
+    if (type === 'client') {
+      inputEl = document.createElement('select');
+      inputEl.className = 'inline-edit-input';
+      const clients = Config.getClients();
+      if (prev && !clients.some((c) => c.name === prev)) {
+        const opt = document.createElement('option');
+        opt.value = prev; opt.textContent = prev; opt.selected = true;
+        inputEl.appendChild(opt);
+      }
+      for (const c of clients) {
+        const opt = document.createElement('option');
+        opt.value = c.name; opt.textContent = c.name;
+        if (c.name === prev) opt.selected = true;
+        inputEl.appendChild(opt);
+      }
+    } else if (type === 'date') {
+      inputEl = document.createElement('input');
+      inputEl.type = 'date';
+      inputEl.value = toDateInputValue(prev);
+      inputEl.className = 'inline-edit-input';
+    } else {
+      inputEl = document.createElement('input');
+      inputEl.type = 'text';
+      inputEl.value = prev;
+      inputEl.className = 'inline-edit-input';
+    }
+
     td.textContent = '';
     td.classList.add('editing');
-    td.appendChild(input);
-    input.focus();
-    input.select();
+    td.appendChild(inputEl);
+    inputEl.focus();
+    if (inputEl.select && type !== 'date') inputEl.select();
 
     let done = false;
 
@@ -362,14 +419,16 @@ function makeEditableCell(td, ch, field) {
     const confirm = async () => {
       if (done) return;
       done = true;
-      const newVal = input.value.trim();
+      const rawVal = inputEl.value;
+      const newVal = typeof rawVal === 'string' ? rawVal.trim() : rawVal;
       td.classList.remove('editing');
-      if (newVal === prev) { td.textContent = prev; return; }
+      if (!newVal || newVal === prev) { td.textContent = prev; return; }
       td.textContent = '…';
       try {
         await saveField(ch, field, newVal);
-        ch[field] = newVal;
-        td.textContent = newVal;
+        const display = type === 'date' ? formatDateDisplay(newVal) : newVal;
+        ch[field] = display;
+        td.textContent = display;
         toast('Modifié.', 'success');
         if (field === 'client') renderTable();
       } catch (e) {
@@ -378,11 +437,18 @@ function makeEditableCell(td, ch, field) {
       }
     };
 
-    input.addEventListener('keydown', (e) => {
+    inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); confirm(); }
       if (e.key === 'Escape') cancel();
     });
-    input.addEventListener('blur', confirm);
+
+    if (type === 'client') {
+      // For select: save on change, cancel on blur-without-change
+      inputEl.addEventListener('change', confirm);
+      inputEl.addEventListener('blur', cancel);
+    } else {
+      inputEl.addEventListener('blur', confirm);
+    }
   });
 }
 
@@ -720,7 +786,19 @@ function init() {
     renderTable();
   });
 
-  $('sortSelect').addEventListener('change', () => renderTable());
+  // Column header sort via event delegation
+  document.querySelector('#chiffrageTable thead').addEventListener('click', (e) => {
+    const th = e.target.closest('th[data-sort]');
+    if (!th) return;
+    const field = th.dataset.sort;
+    if (sortField === field) {
+      sortAsc = !sortAsc;
+    } else {
+      sortField = field;
+      sortAsc = true;
+    }
+    renderTable();
+  });
 
   $('btnRefresh').addEventListener('click', loadDashboard);
 
@@ -752,6 +830,7 @@ function init() {
   $('btnCloseRoles').addEventListener('click', () => closeModal('rolesModal'));
 
   refreshClientDatalist();
+  updateSortHeaders();
   renderFilters();
   showApp(Auth.isSignedIn());
   if (Auth.isSignedIn()) { refreshClientSelector(); loadDashboard(); }
