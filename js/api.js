@@ -98,6 +98,25 @@ export const DriveAPI = {
     return gfetch(`${DRIVE}?q=${encodeURIComponent(q)}&fields=files(id,name)`);
   },
 
+  // Direct children (folders + files) of a folder, paginated.
+  async listChildren(parentId) {
+    const q = `'${parentId}' in parents and trashed=false`;
+    const files = [];
+    let pageToken = '';
+    do {
+      const params = new URLSearchParams({
+        q,
+        fields: 'nextPageToken,files(id,name,mimeType,webViewLink)',
+        pageSize: '1000',
+      });
+      if (pageToken) params.set('pageToken', pageToken);
+      const res = await gfetch(`${DRIVE}?${params.toString()}`);
+      files.push(...(res.files || []));
+      pageToken = res.nextPageToken || '';
+    } while (pageToken);
+    return files;
+  },
+
   createFolder(name, parentId) {
     return gfetch(DRIVE, {
       method: 'POST',

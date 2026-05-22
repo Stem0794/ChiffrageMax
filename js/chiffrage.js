@@ -4,7 +4,8 @@ import {
   colLetter, hexToRgb, formatDateParts, cleanProjectName, spreadsheetUrl,
 } from './utils.js';
 
-const MODEL_SHEET_NAME = 'ModeleChiffrage';
+const VALIDATION_STATUSES = ['Envoyé', 'Validé', 'Passé en TMA', 'Refusé', 'Annulé'];
+export const STATUS_OPTIONS = ['', ...VALIDATION_STATUSES];
 
 // Rate reference cells (column 2..12 -> $B$7 .. $L$7) used in the phase formulas.
 const TJM_MAP = {
@@ -12,26 +13,19 @@ const TJM_MAP = {
   8: '$H$7', 9: '$I$7', 10: '$J$7', 11: '$K$7', 12: '$L$7',
 };
 
-// Read ConfigPhases (columns A: phase, B: items) and return sorted [{phase, items}].
-export async function readPhasesConfig() {
-  const spreadsheetId = Config.get('spreadsheetId');
-  const res = await SheetsAPI.getValues(spreadsheetId, 'ConfigPhases!A2:B');
-  const rows = res.values || [];
-  const phases = rows
-    .filter((r) => r[0] && r[1])
-    .map((r) => ({ phase: Number(r[0]), items: Number(r[1]) }));
-  phases.sort((a, b) => a.phase - b.phase);
-  return phases;
-}
-
-// Locate the ModeleChiffrage sheet inside the dashboard spreadsheet.
-async function getModelSheet() {
-  const spreadsheetId = Config.get('spreadsheetId');
-  const meta = await SheetsAPI.get(spreadsheetId, {
+// Locate the model sheet inside the standalone template spreadsheet.
+// Prefers a tab named ModeleChiffrage, then Chiffrage, else the first sheet.
+export async function getModelSheet() {
+  const templateId = Config.get('templateId');
+  if (!templateId) throw new Error('ID du modèle manquant. Renseignez-le dans la configuration.');
+  const meta = await SheetsAPI.get(templateId, {
     fields: 'sheets(properties(sheetId,title,gridProperties(columnCount)))',
   });
-  const sheet = meta.sheets.find((s) => s.properties.title === MODEL_SHEET_NAME);
-  if (!sheet) throw new Error(`Feuille « ${MODEL_SHEET_NAME} » introuvable dans le classeur.`);
+  const sheets = meta.sheets || [];
+  const sheet = sheets.find((s) => s.properties.title === 'ModeleChiffrage')
+    || sheets.find((s) => s.properties.title === 'Chiffrage')
+    || sheets[0];
+  if (!sheet) throw new Error('Aucune feuille trouvée dans le modèle.');
   return sheet.properties;
 }
 
@@ -194,8 +188,6 @@ async function genererChiffrageSelonConfig(newSpreadsheetId, sheetId, lastCol, i
   await setValidationChiffrageDropdown(newSpreadsheetId, sheetId);
 }
 
-const VALIDATION_OPTIONS = ['Envoyé', 'Validé', 'Passé en TMA', 'Refusé', 'Annulé'];
-
 async function setValidationChiffrageDropdown(spreadsheetId, sheetId) {
   const res = await SheetsAPI.getValues(spreadsheetId, 'Chiffrage!A:A');
   const colA = (res.values || []).flat();
@@ -213,7 +205,7 @@ async function setValidationChiffrageDropdown(spreadsheetId, sheetId) {
       rule: {
         condition: {
           type: 'ONE_OF_LIST',
-          values: VALIDATION_OPTIONS.map((v) => ({ userEnteredValue: v })),
+          values: VALIDATION_STATUSES.map((v) => ({ userEnteredValue: v })),
         },
         showCustomUi: true,
         strict: false,
@@ -223,23 +215,16 @@ async function setValidationChiffrageDropdown(spreadsheetId, sheetId) {
 }
 
 /**
- * Create a new estimate file for the dashboard row at `rowNumber` (1-based, header = 1).
- * `entry` = { numDevis, client, projet, ticket, date(Date|null), status, targetFolderId? }.
- *   targetFolderId: if provided, place the file directly in that folder instead of the
- *   default root/year/month hierarchy.
+ * Create a new estimate file from the standalone template.
+ * `entry` = { numDevis, client, projet, ticket, date(Date|null), targetFolderId?, phases }.
+ *   targetFolderId: place the file directly in that folder; otherwise root/year/month.
  * Returns { id, url, idChiffrage }.
  */
-export async function nouveauChiffrage(rowNumber, entry) {
-  const spreadsheetId = Config.get('spreadsheetId');
-  const { numDevis, client, projet, ticket, date, status, targetFolderId } = entry;
+export async function nouveauChiffrage(entry) {
+  const { numDevis, client, projet, ticket, date, targetFolderId, phases } = entry;
 
   if (!client || !projet) throw new Error('Renseignez au moins le Client et le Projet.');
-
-  // Use phases passed by the caller; fall back to the ConfigPhases sheet.
-  const phases = (entry.phases?.length)
-    ? entry.phases
-    : await readPhasesConfig();
-  if (!phases.length) throw new Error('Aucune configuration dans ConfigPhases.');
+  if (!phases?.length) throw new Error('Configurez au moins une phase.');
 
   const phase1Config = phases[0];
   const otherPhases = phases.slice(1);
@@ -258,16 +243,16 @@ export async function nouveauChiffrage(rowNumber, entry) {
   const idChiffrage = `CHI-${dateStrId}- ${cleanProjectName(projet)}`;
 
   // Resolve target Drive folder.
-  // If caller passed a specific folder ID, use it directly; otherwise resolve year/month.
   const destFolderId = targetFolderId || await resolveMonthFolder(yearStr, monthStr);
 
-  // Create the new spreadsheet, copy the model sheet into it, rename, drop default sheet.
+  // Create the new spreadsheet, copy the model sheet from the template, rename, drop default sheet.
+  const templateId = Config.get('templateId');
   const model = await getModelSheet();
   const created = await SheetsAPI.create(idChiffrage);
   const newId = created.spreadsheetId;
   const defaultSheetId = created.sheets[0].properties.sheetId;
 
-  const copied = await SheetsAPI.copySheetTo(spreadsheetId, model.sheetId, newId);
+  const copied = await SheetsAPI.copySheetTo(templateId, model.sheetId, newId);
   const copiedSheetId = copied.sheetId;
 
   await SheetsAPI.batchUpdate(newId, [
@@ -278,15 +263,14 @@ export async function nouveauChiffrage(rowNumber, entry) {
   // Move the file into the chosen folder.
   await DriveAPI.moveFile(newId, destFolderId);
 
-  // Fill the model header (C1:C4).
-  // Pass date as YYYY-MM-DD so Sheets parses it correctly in any locale.
+  // Fill the header (C1:C5). Date as YYYY-MM-DD so Sheets parses it in any locale.
+  // N° devis is stored in C5 so the dashboard can read it back when scanning Drive.
   const dateValue = dateIsUnknown ? 'Unknown' : date.toISOString().split('T')[0];
-  await SheetsAPI.updateValues(newId, 'Chiffrage!C1:C4', [
-    [client], [projet], [ticket || ''], [dateValue],
+  await SheetsAPI.updateValues(newId, 'Chiffrage!C1:C5', [
+    [client], [projet], [ticket || ''], [dateValue], [numDevis || ''],
   ]);
 
   // Apply client-specific TJM rates to row 7 (B7:L7), overriding the model defaults.
-  // Only cells with an explicit rate are written; blank entries keep the model value.
   const clientTjm = Config.getClientTjm(client);
   if (Array.isArray(clientTjm)) {
     const tjmUpdates = [];
@@ -302,15 +286,117 @@ export async function nouveauChiffrage(rowNumber, entry) {
   const lastCol = model.gridProperties?.columnCount || 15;
   await genererChiffrageSelonConfig(newId, copiedSheetId, lastCol, phase1Config.items, otherPhases);
 
-  // Update the dashboard row: A=ID, G=status (if empty), H=URL, I=montant(0).
-  const url = spreadsheetUrl(newId);
-  const updates = [
-    { range: `Chiffrage!A${rowNumber}`, values: [[idChiffrage]] },
-    { range: `Chiffrage!H${rowNumber}`, values: [[url]] },
-    { range: `Chiffrage!I${rowNumber}`, values: [[0]] },
-  ];
-  if (!status) updates.push({ range: `Chiffrage!G${rowNumber}`, values: [['Brouillon']] });
-  await SheetsAPI.batchUpdateValues(spreadsheetId, updates);
+  return { id: newId, url: spreadsheetUrl(newId), idChiffrage };
+}
 
-  return { id: newId, url, idChiffrage };
+/* ---------- Dashboard: scan Drive folders for chiffrage files ---------- */
+
+// Recursively collect CHI-* spreadsheet files under the given folders.
+async function collectChiffrageFiles(folderIds) {
+  const found = [];
+  const seen = new Set();
+
+  async function walk(folderId) {
+    if (!folderId || seen.has(folderId)) return;
+    seen.add(folderId);
+    const children = await DriveAPI.listChildren(folderId);
+    for (const f of children) {
+      if (f.mimeType === 'application/vnd.google-apps.folder') {
+        await walk(f.id);
+      } else if (
+        f.mimeType === 'application/vnd.google-apps.spreadsheet'
+        && f.name.startsWith('CHI-')
+      ) {
+        found.push(f);
+      }
+    }
+  }
+
+  for (const id of folderIds) await walk(id);
+  return found;
+}
+
+// Read one chiffrage file in a single pass: header (C1:C5), validation status, total.
+export async function readChiffrageFile(file) {
+  const meta = await SheetsAPI.get(file.id, { fields: 'sheets(properties(title))' });
+  const titles = (meta.sheets || []).map((s) => s.properties.title);
+  const sheetName = titles.includes('Chiffrage') ? 'Chiffrage' : (titles[0] || 'Chiffrage');
+
+  const res = await SheetsAPI.getValues(file.id, `'${sheetName.replace(/'/g, "''")}'`);
+  const data = res.values || [];
+  const cell = (r, c) => (data[r] && data[r][c] != null ? String(data[r][c]) : '');
+
+  // Validation status: cell below the "Validation chiffrage" label (column A).
+  let status = '';
+  let statusRow = 0; // 1-based
+  const labelIdx = data.findIndex((row) => row.some((v) => String(v).toLowerCase().includes('validation chiffrage')));
+  if (labelIdx >= 0) {
+    statusRow = labelIdx + 2;
+    status = cell(labelIdx + 1, 0);
+  }
+
+  return {
+    id: file.id,
+    name: file.name,
+    url: file.webViewLink || spreadsheetUrl(file.id),
+    sheetName,
+    client: cell(0, 2), // C1
+    projet: cell(1, 2), // C2
+    ticket: cell(2, 2), // C3
+    date: cell(3, 2), // C4
+    numDevis: cell(4, 2), // C5
+    status,
+    statusRow,
+    montant: extractMontant(data),
+  };
+}
+
+// Find the total amount (port of getMontantFromChiffrage's scan) from sheet values.
+function extractMontant(data) {
+  let buildCandidate = 0;
+  let specificCandidate = 0;
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i] || [];
+    for (let j = 0; j < row.length; j++) {
+      const c = String(row[j]).toUpperCase();
+      if (!c.includes('TOTAL') || !c.includes('WITHOUT VAT')) continue;
+      let amount = 0;
+      for (let k = j + 1; k < row.length; k++) {
+        const val = parseAmount(row[k]);
+        if (val > 0) { amount = val; break; }
+      }
+      if (!amount) continue;
+      if (c.includes('BUILD') && !c.replace('BUILD', '').match(/[A-Z]{3,}/)) buildCandidate = amount;
+      else specificCandidate = amount;
+    }
+  }
+  return specificCandidate || buildCandidate;
+}
+
+function parseAmount(val) {
+  if (typeof val === 'number') return val;
+  if (val == null) return 0;
+  const n = parseFloat(String(val).replace(/[^\d.,-]/g, '').replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+}
+
+// List all chiffrages by scanning client folders + the global root folder.
+export async function listChiffrages() {
+  const folderIds = [
+    ...Config.getClients().map((c) => c.folderId).filter(Boolean),
+    Config.get('rootFolderId'),
+  ].filter(Boolean);
+  const unique = [...new Set(folderIds)];
+
+  const files = await collectChiffrageFiles(unique);
+  const results = await Promise.all(files.map((f) => readChiffrageFile(f)));
+  // Most recent first by file name (CHI-DD/MM/YY...), best-effort.
+  return results.sort((a, b) => b.name.localeCompare(a.name));
+}
+
+// Persist a status change to the validation dropdown cell of a chiffrage file.
+export async function setChiffrageStatus(fileId, sheetName, statusRow, status) {
+  if (!statusRow) throw new Error("Cellule « Validation chiffrage » introuvable dans ce fichier.");
+  const sn = `'${sheetName.replace(/'/g, "''")}'`;
+  await SheetsAPI.updateValues(fileId, `${sn}!A${statusRow}`, [[status]]);
 }

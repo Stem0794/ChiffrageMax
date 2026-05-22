@@ -1,23 +1,22 @@
 import { Config } from './config.js';
 import { Auth } from './auth.js';
 import { SheetsAPI } from './api.js';
-import { nouveauChiffrage } from './chiffrage.js';
-import { updateMontantForRow, getMontantFromChiffrage } from './montant.js';
-import { renderTmaChart } from './charts.js';
-import { ajouterProjetAuPlanning, colorierGroupesAlternes } from './planning.js';
-import { formatDateParts, extractSpreadsheetId, extractFolderId } from './utils.js';
-
-const STATUS_OPTIONS = ['', 'Brouillon', 'Envoyé', 'Devis validé', 'Refusé'];
+import {
+  nouveauChiffrage, listChiffrages, setChiffrageStatus, STATUS_OPTIONS,
+} from './chiffrage.js';
+import { extractSpreadsheetId, extractFolderId } from './utils.js';
 
 const $ = (id) => document.getElementById(id);
 
-let rows = []; // [{ rowNumber, data: [A..I] }]
+let chiffrages = []; // full list from Drive scan
+let selectedClient = ''; // '' = all clients
 
-/* ---------- UI helpers ---------- */
+/* ---- UI helpers ---- */
 function toast(msg, type = '') {
   const el = $('toast');
   el.textContent = msg;
   el.className = `toast ${type}`;
+  el.classList.remove('hidden');
   setTimeout(() => el.classList.add('hidden'), 3500);
 }
 
@@ -40,26 +39,58 @@ function busy(button, isBusy, label) {
   }
 }
 
-function refreshConfigWarning() {
-  $('configWarning').classList.toggle('hidden', Config.isComplete());
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/* ---------- Auth wiring ---------- */
-Auth.onChange((signedIn) => {
-  $('userStatus').textContent = signedIn ? 'Connecté' : 'Non connecté';
-  $('btnSignIn').classList.toggle('hidden', signedIn);
+/* ---- Auth gate ---- */
+function showApp(signedIn) {
+  $('loginPage').classList.toggle('hidden', signedIn);
+  $('appPage').classList.toggle('hidden', !signedIn);
   $('btnSignOut').classList.toggle('hidden', !signedIn);
+  $('userStatus').textContent = signedIn ? 'Connecté' : 'Non connecté';
+}
+
+Auth.onChange((signedIn) => {
+  showApp(signedIn);
+  if (signedIn) {
+    refreshClientSelector();
+    loadDashboard();
+  }
 });
 
-/* ---------- Dashboard ---------- */
+/* ---- Client selector ---- */
+function refreshClientSelector() {
+  const sel = $('clientSelector');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Tous les clients</option>';
+  Config.getClients().forEach((c) => {
+    const opt = document.createElement('option');
+    opt.value = c.name;
+    opt.textContent = c.name;
+    sel.appendChild(opt);
+  });
+  if (prev && [...sel.options].some((o) => o.value === prev)) {
+    sel.value = prev;
+    selectedClient = prev;
+  } else {
+    selectedClient = '';
+  }
+}
+
+function refreshClientDatalist() {
+  const dl = $('clientDatalist');
+  if (!dl) return;
+  dl.innerHTML = Config.getClients().map((c) => `<option value="${escHtml(c.name)}">`).join('');
+}
+
+/* ---- Dashboard ---- */
 async function loadDashboard() {
-  if (!Config.isComplete()) { refreshConfigWarning(); return; }
+  if (!Auth.isSignedIn()) return;
   showGlobalError('');
   busy($('btnRefresh'), true, 'Chargement…');
   try {
-    const res = await SheetsAPI.getValues(Config.get('spreadsheetId'), 'Chiffrage!A2:I');
-    const values = res.values || [];
-    rows = values.map((data, i) => ({ rowNumber: i + 2, data }));
+    chiffrages = await listChiffrages();
     renderTable();
   } catch (e) {
     showGlobalError(e.message);
@@ -68,21 +99,28 @@ async function loadDashboard() {
   }
 }
 
+function visibleChiffrages() {
+  if (!selectedClient) return chiffrages;
+  const key = selectedClient.trim().toLowerCase();
+  return chiffrages.filter((c) => (c.client || '').trim().toLowerCase() === key);
+}
+
 function renderTable() {
   const body = $('chiffrageBody');
   body.innerHTML = '';
+  const visible = visibleChiffrages();
 
-  if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="10" class="empty">Aucun chiffrage. Cliquez sur « Nouveau chiffrage ».</td></tr>';
+  if (!visible.length) {
+    const msg = selectedClient
+      ? `Aucun chiffrage trouvé pour « ${escHtml(selectedClient)} ».`
+      : 'Aucun chiffrage trouvé. Cliquez sur « Nouveau chiffrage ».';
+    body.innerHTML = `<tr><td colspan="9" class="empty">${msg}</td></tr>`;
     return;
   }
 
-  for (const row of rows) {
-    const [id, numDevis, client, projet, ticket, date, statut, url, montant] = row.data;
+  for (const ch of visible) {
     const tr = document.createElement('tr');
-
-    const cells = [id, numDevis, client, projet, ticket, date].map((v) => cell(v));
-    cells.forEach((c) => tr.appendChild(c));
+    [ch.name, ch.numDevis, ch.client, ch.projet, ch.ticket, ch.date].forEach((v) => tr.appendChild(cell(v)));
 
     // Status select
     const tdStatus = document.createElement('td');
@@ -90,19 +128,23 @@ function renderTable() {
     select.className = 'status-select';
     for (const opt of STATUS_OPTIONS) {
       const o = document.createElement('option');
-      o.value = opt; o.textContent = opt || '—';
-      if ((statut || '') === opt) o.selected = true;
+      o.value = opt;
+      o.textContent = opt || '—';
+      if ((ch.status || '') === opt) o.selected = true;
       select.appendChild(o);
     }
-    select.addEventListener('change', () => onStatusChange(row, select.value, select));
+    select.addEventListener('change', () => onStatusChange(ch, select.value, select));
     tdStatus.appendChild(select);
     tr.appendChild(tdStatus);
 
     // File link
     const tdFile = document.createElement('td');
-    if (url) {
+    if (ch.url) {
       const a = document.createElement('a');
-      a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Ouvrir';
+      a.href = ch.url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = 'Ouvrir';
       tdFile.appendChild(a);
     } else {
       tdFile.textContent = '—';
@@ -110,21 +152,9 @@ function renderTable() {
     tr.appendChild(tdFile);
 
     // Amount
-    const tdMontant = cell(formatMontant(montant));
+    const tdMontant = cell(formatMontant(ch.montant));
     tdMontant.className = 'amount';
     tr.appendChild(tdMontant);
-
-    // Row actions
-    const tdActions = document.createElement('td');
-    tdActions.className = 'row-actions';
-    if (url) {
-      const btn = document.createElement('button');
-      btn.className = 'btn'; btn.textContent = '💶';
-      btn.title = 'Mettre à jour le montant';
-      btn.addEventListener('click', () => updateOneMontant(row, btn));
-      tdActions.appendChild(btn);
-    }
-    tr.appendChild(tdActions);
 
     body.appendChild(tr);
   }
@@ -138,175 +168,28 @@ function cell(value) {
 
 function formatMontant(v) {
   const n = typeof v === 'number' ? v : parseFloat(String(v || '').replace(',', '.'));
-  if (!Number.isFinite(n)) return '0';
-  return n.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+  if (!Number.isFinite(n) || n === 0) return '—';
+  return n.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' €';
 }
 
-/* ---------- Status change (onEdit port) ---------- */
-async function onStatusChange(row, newValue, select) {
+/* ---- Status change ---- */
+async function onStatusChange(ch, newValue, select) {
+  const prev = ch.status;
   select.disabled = true;
   try {
-    const spreadsheetId = Config.get('spreadsheetId');
-    await SheetsAPI.updateValues(spreadsheetId, `Chiffrage!G${row.rowNumber}`, [[newValue]]);
-    row.data[6] = newValue;
-
-    const url = row.data[7];
-    if ((newValue === 'Envoyé' || newValue === 'Devis validé') && url) {
-      const montant = await getMontantFromChiffrage(url);
-      if (montant > 0) {
-        await SheetsAPI.updateValues(spreadsheetId, `Chiffrage!I${row.rowNumber}`, [[montant]]);
-        row.data[8] = montant;
-      }
-    }
-
-    if (newValue === 'Devis validé') {
-      const projet = row.data[3];
-      if (projet) {
-        await ajouterProjetAuPlanning(projet);
-        toast(`Projet « ${projet} » ajouté au planning.`, 'success');
-      }
-    } else {
-      toast('Statut mis à jour.', 'success');
-    }
-    renderTable();
+    await setChiffrageStatus(ch.id, ch.sheetName, ch.statusRow, newValue);
+    ch.status = newValue;
+    toast('Statut mis à jour.', 'success');
   } catch (e) {
     toast(e.message, 'error');
+    select.value = prev || '';
   } finally {
     select.disabled = false;
   }
 }
 
-/* ---------- Montant updates ---------- */
-async function updateOneMontant(row, btn) {
-  busy(btn, true);
-  try {
-    const montant = await updateMontantForRow(row.rowNumber, row.data[7]);
-    row.data[8] = montant;
-    renderTable();
-    toast('Montant mis à jour.', 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  } finally {
-    busy(btn, false);
-  }
-}
-
-async function updateAllMontants() {
-  const btn = $('btnUpdateAll');
-  busy(btn, true, 'MAJ…');
-  let count = 0;
-  try {
-    for (const row of rows) {
-      const url = row.data[7];
-      if (!url) continue;
-      const montant = await getMontantFromChiffrage(url);
-      await SheetsAPI.updateValues(Config.get('spreadsheetId'), `Chiffrage!I${row.rowNumber}`, [[montant]]);
-      row.data[8] = montant;
-      count++;
-    }
-    renderTable();
-    toast(`${count} chiffrage(s) mis à jour.`, 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  } finally {
-    busy(btn, false);
-  }
-}
-
-/* ---------- New chiffrage ---------- */
-async function createChiffrage() {
-  const btn = $('btnCreate');
-  const errEl = $('newError');
-  errEl.classList.add('hidden');
-
-  const numDevis = $('newNumDevis').value.trim();
-  const client = $('newClient').value.trim();
-  const projet = $('newProjet').value.trim();
-  const ticket = $('newTicket').value.trim();
-  const dateVal = $('newDate').value;
-  const date = dateVal ? new Date(`${dateVal}T00:00:00`) : null;
-  const folderRaw = $('newFolderId').value.trim();
-  // Priority: explicit folder field → client-level folder config → fall back to root/year/month
-  const targetFolderId = extractFolderId(folderRaw) || Config.getClientFolder(client) || null;
-
-  if (!client || !projet) {
-    errEl.textContent = 'Le Client et le Projet sont obligatoires.';
-    errEl.classList.remove('hidden');
-    return;
-  }
-
-  busy(btn, true, 'Création…');
-  try {
-    const spreadsheetId = Config.get('spreadsheetId');
-    const dateStr = date ? formatDateParts(date).dateStrId : 'Unknown';
-
-    // Append the dashboard row, then resolve its row number.
-    const appendRes = await SheetsAPI.appendValues(
-      spreadsheetId,
-      'Chiffrage!A1',
-      [['', numDevis, client, projet, ticket, dateStr, '', '', '']],
-    );
-    const updatedRange = appendRes.updates.updatedRange; // e.g. Chiffrage!A7:I7
-    const rowNumber = parseInt(updatedRange.match(/!\D+(\d+):/)[1], 10);
-
-    await nouveauChiffrage(rowNumber, { numDevis, client, projet, ticket, date, status: '', targetFolderId, phases: getPhases() });
-
-    closeModal('newModal');
-    toast('Chiffrage créé.', 'success');
-    await loadDashboard();
-  } catch (e) {
-    errEl.textContent = e.message;
-    errEl.classList.remove('hidden');
-  } finally {
-    busy(btn, false);
-  }
-}
-
-/* ---------- Chart ---------- */
-async function refreshChart() {
-  const btn = $('btnChart');
-  busy(btn, true, '…');
-  try {
-    const n = await renderTmaChart($('tmaChart'));
-    toast(`${n} devis représenté(s).`, 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  } finally {
-    busy(btn, false);
-  }
-}
-
-/* ---------- Planning ---------- */
-async function addPlanning() {
-  const btn = $('btnAddPlanning');
-  const name = $('planningProjectName').value.trim();
-  busy(btn, true, '…');
-  try {
-    await ajouterProjetAuPlanning(name);
-    $('planningProjectName').value = '';
-    toast('Projet ajouté au planning (4 phases).', 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  } finally {
-    busy(btn, false);
-  }
-}
-
-async function colorPlanning() {
-  const btn = $('btnColorPlanning');
-  busy(btn, true, '…');
-  try {
-    await colorierGroupesAlternes();
-    toast('Groupes colorés.', 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  } finally {
-    busy(btn, false);
-  }
-}
-
-/* ---------- Phase builder ---------- */
-let phasesData = [{ items: 1 }]; // [{items: number}], index+1 = phase number
+/* ---- Phase builder ---- */
+let phasesData = [{ items: 1 }];
 
 function renderPhaseRows() {
   const container = $('phaseRows');
@@ -325,8 +208,7 @@ function renderPhaseRows() {
       phasesData[i].items = Number.isFinite(v) && v > 0 ? v : 1;
     });
     row.querySelector('.btn-del').addEventListener('click', (e) => {
-      const idx = Number(e.currentTarget.dataset.idx);
-      phasesData.splice(idx, 1);
+      phasesData.splice(Number(e.currentTarget.dataset.idx), 1);
       renderPhaseRows();
     });
     container.appendChild(row);
@@ -342,23 +224,50 @@ function getPhases() {
   return phasesData.map((p, i) => ({ phase: i + 1, items: Math.max(1, p.items) }));
 }
 
-async function initPhasesFromConfig() {
+/* ---- New chiffrage ---- */
+async function createChiffrage() {
+  const btn = $('btnCreate');
+  const errEl = $('newError');
+  errEl.classList.add('hidden');
+
+  const numDevis = $('newNumDevis').value.trim();
+  const client = $('newClient').value.trim();
+  const projet = $('newProjet').value.trim();
+  const ticket = $('newTicket').value.trim();
+  const dateVal = $('newDate').value;
+  const date = dateVal ? new Date(`${dateVal}T00:00:00`) : null;
+  const targetFolderId = Config.getClientFolder(client) || null;
+
+  if (!client || !projet) {
+    errEl.textContent = 'Le Client et le Projet sont obligatoires.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  if (!Config.get('templateId')) {
+    errEl.textContent = 'Configurez l\'ID du modèle dans les paramètres (⚙️).';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  busy(btn, true, 'Création…');
   try {
-    const { readPhasesConfig } = await import('./chiffrage.js');
-    const cfgPhases = await readPhasesConfig();
-    if (cfgPhases.length) {
-      phasesData = cfgPhases.map((p) => ({ items: p.items }));
-      renderPhaseRows();
-    }
-  } catch {
-    // Leave default if ConfigPhases is unreadable.
+    await nouveauChiffrage({ numDevis, client, projet, ticket, date, targetFolderId, phases: getPhases() });
+    closeModal('newModal');
+    toast('Chiffrage créé avec succès.', 'success');
+    await loadDashboard();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('hidden');
+  } finally {
+    busy(btn, false);
   }
 }
 
-/* ---------- Modals / settings ---------- */
+/* ---- Modals ---- */
 function openModal(id) { $(id).classList.remove('hidden'); }
 function closeModal(id) { $(id).classList.add('hidden'); }
 
+/* ---- Settings ---- */
 function renderClientList() {
   const container = $('clientList');
   const clients = Config.getClients();
@@ -385,6 +294,7 @@ function renderClientList() {
       Config.deleteClient(btn.dataset.delete);
       renderClientList();
       refreshClientDatalist();
+      refreshClientSelector();
     });
   });
   container.querySelectorAll('[data-tjm]').forEach((btn) => {
@@ -392,22 +302,10 @@ function renderClientList() {
   });
 }
 
-function refreshClientDatalist() {
-  const dl = $('clientDatalist');
-  if (!dl) return;
-  dl.innerHTML = Config.getClients()
-    .map((c) => `<option value="${escHtml(c.name)}">`)
-    .join('');
-}
-
-function escHtml(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 function openSettings() {
   const c = Config.load();
   $('cfgClientId').value = c.clientId;
-  $('cfgSpreadsheetId').value = c.spreadsheetId;
+  $('cfgTemplateId').value = c.templateId;
   $('cfgRootFolderId').value = c.rootFolderId;
   $('addClientName').value = '';
   $('addClientFolder').value = '';
@@ -416,16 +314,17 @@ function openSettings() {
 }
 
 function saveSettings() {
+  const rawTemplate = $('cfgTemplateId').value.trim();
+  const rawRoot = $('cfgRootFolderId').value.trim();
   Config.save({
     clientId: $('cfgClientId').value.trim(),
-    spreadsheetId: extractSpreadsheetId($('cfgSpreadsheetId').value.trim()) || $('cfgSpreadsheetId').value.trim(),
-    rootFolderId: $('cfgRootFolderId').value.trim(),
+    templateId: extractSpreadsheetId(rawTemplate) || rawTemplate,
+    rootFolderId: extractFolderId(rawRoot) || rawRoot,
   });
   closeModal('settingsModal');
-  refreshConfigWarning();
   refreshClientDatalist();
+  refreshClientSelector();
   toast('Configuration enregistrée.', 'success');
-  if (Auth.isSignedIn()) loadDashboard();
 }
 
 function addClient() {
@@ -438,37 +337,17 @@ function addClient() {
   $('addClientFolder').value = '';
   renderClientList();
   refreshClientDatalist();
+  refreshClientSelector();
   toast(`Client « ${name} » enregistré.`, 'success');
 }
 
-/* ---------- Auto-fill folder from client ---------- */
-let folderAutoFilled = false;
-
-function onClientInput() {
-  const clientName = $('newClient').value.trim();
-  const folderInput = $('newFolderId');
-  const hint = $('folderHint');
-  const configured = Config.getClientFolder(clientName);
-
-  if (configured) {
-    folderInput.value = configured;
-    folderAutoFilled = true;
-    hint.textContent = `Dossier configuré pour « ${clientName} ». Modifiable.`;
-  } else if (folderAutoFilled) {
-    folderInput.value = '';
-    folderAutoFilled = false;
-    hint.textContent = 'Laissez vide pour utiliser le dossier racine global.';
-  }
-}
-
-/* ---------- TJM modal ---------- */
-// Fallback role names matching the model's B6:L6 header row (cols 2–12).
+/* ---- TJM modal ---- */
 const FALLBACK_ROLE_NAMES = [
   'Production Director', 'Project Director', 'Senior Project Manager',
   'Project Manager', 'Data Analyst', 'Designer UX', 'Designer UI',
   'CTO', 'Tech lead', 'SRE', 'Full Stack Developer',
 ];
-const TJM_COL_COUNT = 11; // B through L
+const TJM_COL_COUNT = 11;
 
 let tjmClientTarget = null;
 let tjmRoleNames = [...FALLBACK_ROLE_NAMES];
@@ -476,27 +355,22 @@ let tjmRoleNames = [...FALLBACK_ROLE_NAMES];
 async function openTjmModal(clientName) {
   tjmClientTarget = clientName;
   $('tjmClientLabel').textContent = clientName;
-  // Show existing saved values immediately (or blanks).
   const existing = Config.getClientTjm(clientName) || new Array(TJM_COL_COUNT).fill('');
   renderTjmRows(existing, tjmRoleNames);
   openModal('tjmModal');
-  // Then try to load real role names from the model sheet header row (B6:L6).
   await refreshTjmRoleNames();
 }
 
 async function refreshTjmRoleNames() {
-  if (!Auth.isSignedIn() || !Config.get('spreadsheetId')) return;
+  const templateId = Config.get('templateId');
+  if (!Auth.isSignedIn() || !templateId) return;
   try {
-    const res = await SheetsAPI.getValues(Config.get('spreadsheetId'), 'ModeleChiffrage!B6:L6');
+    const res = await SheetsAPI.getValues(templateId, 'ModeleChiffrage!B6:L6');
     const names = res.values?.[0] || [];
     if (names.filter(Boolean).length > 0) {
       tjmRoleNames = names;
-      // Re-render labels in place without resetting values.
-      const inputs = $('tjmRows').querySelectorAll('input[type=number]');
       const labels = $('tjmRows').querySelectorAll('.tjm-role');
-      names.forEach((name, i) => {
-        if (labels[i] && name) labels[i].textContent = name;
-      });
+      names.forEach((name, i) => { if (labels[i] && name) labels[i].textContent = name; });
     }
   } catch { /* keep fallback names */ }
 }
@@ -518,9 +392,11 @@ function renderTjmRows(values, names) {
 
 async function loadTjmFromModel() {
   const btn = $('btnLoadTjmModel');
+  const templateId = Config.get('templateId');
+  if (!templateId) { toast('ID du modèle non configuré.', 'error'); return; }
   busy(btn, true, '…');
   try {
-    const res = await SheetsAPI.getValues(Config.get('spreadsheetId'), 'ModeleChiffrage!B7:L7');
+    const res = await SheetsAPI.getValues(templateId, 'ModeleChiffrage!B7:L7');
     const values = (res.values?.[0] || []).map((v) => {
       const n = parseFloat(String(v).replace(',', '.'));
       return Number.isFinite(n) ? n : '';
@@ -542,61 +418,71 @@ function saveTjm() {
   });
   Config.setClientTjm(tjmClientTarget, values);
   closeModal('tjmModal');
-  renderClientList(); // refresh badge count
+  renderClientList();
   toast(`TJM enregistrés pour « ${tjmClientTarget} ».`, 'success');
 }
 
-/* ---------- Wire up ---------- */
+/* ---- Wire up ---- */
 function init() {
+  // Auth
   $('btnSignIn').addEventListener('click', async () => {
-    if (!Config.isComplete()) { openSettings(); return; }
+    if (!Config.get('clientId')) {
+      openSettings();
+      toast('Configurez votre OAuth Client ID d\'abord.', 'error');
+      return;
+    }
     try {
       await Auth.signIn();
-      await loadDashboard();
     } catch (e) {
       toast(e.message, 'error');
     }
   });
   $('btnSignOut').addEventListener('click', () => Auth.signOut());
+  $('openSettingsFromLogin').addEventListener('click', openSettings);
 
+  // Settings
   $('btnSettings').addEventListener('click', openSettings);
-  $('openSettingsLink').addEventListener('click', openSettings);
   $('btnSaveSettings').addEventListener('click', saveSettings);
   $('btnCloseSettings').addEventListener('click', () => closeModal('settingsModal'));
   $('btnAddClient').addEventListener('click', addClient);
+
+  // Client selector
+  $('clientSelector').addEventListener('change', (e) => {
+    selectedClient = e.target.value;
+    renderTable();
+  });
+
+  // Dashboard
+  $('btnRefresh').addEventListener('click', loadDashboard);
+
+  // New chiffrage
+  $('btnNew').addEventListener('click', () => {
+    $('newError').classList.add('hidden');
+    $('newNumDevis').value = '';
+    $('newClient').value = selectedClient;
+    $('newProjet').value = '';
+    $('newTicket').value = '';
+    $('newDate').value = new Date().toISOString().split('T')[0];
+    phasesData = [{ items: 1 }];
+    renderPhaseRows();
+    openModal('newModal');
+  });
+  $('btnAddPhase').addEventListener('click', addPhase);
+  $('btnCreate').addEventListener('click', createChiffrage);
+  $('btnCloseNew').addEventListener('click', () => closeModal('newModal'));
+
+  // TJM
   $('btnLoadTjmModel').addEventListener('click', loadTjmFromModel);
   $('btnSaveTjm').addEventListener('click', saveTjm);
   $('btnCloseTjm').addEventListener('click', () => closeModal('tjmModal'));
 
-  $('btnRefresh').addEventListener('click', loadDashboard);
-  $('btnUpdateAll').addEventListener('click', updateAllMontants);
-
-  $('btnNew').addEventListener('click', async () => {
-    if (!Auth.isSignedIn()) { toast('Connectez-vous d\'abord.', 'error'); return; }
-    $('newError').classList.add('hidden');
-    $('folderHint').textContent = 'Laissez vide pour utiliser le dossier racine global.';
-    folderAutoFilled = false;
-    ['newNumDevis', 'newClient', 'newProjet', 'newTicket', 'newDate', 'newFolderId'].forEach((id) => { $(id).value = ''; });
-    // Reset to 1 phase / 1 item, then try to pre-fill from ConfigPhases.
-    phasesData = [{ items: 1 }];
-    renderPhaseRows();
-    openModal('newModal');
-    await initPhasesFromConfig();
-  });
-  $('btnAddPhase').addEventListener('click', addPhase);
-  $('newClient').addEventListener('input', onClientInput);
-  $('newClient').addEventListener('change', onClientInput);
-  $('newFolderId').addEventListener('input', () => { folderAutoFilled = false; });
-
-  $('btnCreate').addEventListener('click', createChiffrage);
-  $('btnCloseNew').addEventListener('click', () => closeModal('newModal'));
-
-  $('btnChart').addEventListener('click', refreshChart);
-  $('btnAddPlanning').addEventListener('click', addPlanning);
-  $('btnColorPlanning').addEventListener('click', colorPlanning);
-
-  refreshConfigWarning();
+  // Init state
   refreshClientDatalist();
+  showApp(Auth.isSignedIn());
+  if (Auth.isSignedIn()) {
+    refreshClientSelector();
+    loadDashboard();
+  }
 }
 
 init();

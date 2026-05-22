@@ -3,10 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ChiffrageMax — Tableau de bord</title>
+  <title>ChiffrageMax</title>
   <link rel="stylesheet" href="./css/styles.css" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <header class="topbar">
@@ -16,35 +15,48 @@
     </div>
     <div class="topbar-actions">
       <span id="userStatus" class="user-status">Non connecté</span>
-      <button id="btnSignIn" class="btn btn-primary">Se connecter</button>
       <button id="btnSignOut" class="btn btn-ghost hidden">Déconnexion</button>
       <button id="btnSettings" class="btn btn-ghost" title="Configuration">⚙️</button>
     </div>
   </header>
 
-  <main class="container">
-    <div id="configWarning" class="banner banner-warn hidden">
-      ⚠️ Configuration incomplète. Ouvrez la <button id="openSettingsLink" class="link-btn">configuration</button>
-      pour renseigner votre Client ID OAuth, l'ID du classeur et le dossier Drive.
+  <!-- Login page — shown when not signed in -->
+  <div id="loginPage" class="login-page">
+    <div class="login-card">
+      <div class="login-logo">📊</div>
+      <h2>ChiffrageMax</h2>
+      <p class="login-desc">Gérez vos chiffrages directement depuis Google Drive.<br>Aucune donnée ne transite par un serveur externe.</p>
+      <button id="btnSignIn" class="btn btn-primary btn-lg">Se connecter avec Google</button>
+      <p class="login-hint">
+        Vos identifiants OAuth sont stockés <strong>uniquement dans votre navigateur</strong> (localStorage).<br>
+        Aucun secret n'est présent dans le code source public.
+        Configurez votre Client ID via <button id="openSettingsFromLogin" class="link-btn">⚙️ Configuration</button>.
+      </p>
     </div>
+  </div>
 
+  <!-- App — shown when signed in -->
+  <main id="appPage" class="container hidden">
     <div id="globalError" class="banner banner-error hidden"></div>
 
-    <!-- Dashboard toolbar -->
     <section class="panel">
       <div class="panel-head">
-        <h2>Chiffrages</h2>
+        <div class="panel-head-left">
+          <h2>Chiffrages</h2>
+          <select id="clientSelector" class="input client-selector-input">
+            <option value="">Tous les clients</option>
+          </select>
+        </div>
         <div class="panel-actions">
           <button id="btnNew" class="btn btn-primary">➕ Nouveau chiffrage</button>
           <button id="btnRefresh" class="btn">🔄 Recharger</button>
-          <button id="btnUpdateAll" class="btn">💶 MAJ tous les montants</button>
         </div>
       </div>
       <div class="table-wrap">
         <table id="chiffrageTable" class="data-table">
           <thead>
             <tr>
-              <th>ID</th>
+              <th>ID fichier</th>
               <th>N° devis</th>
               <th>Client</th>
               <th>Projet</th>
@@ -52,41 +64,14 @@
               <th>Date</th>
               <th>Statut</th>
               <th>Fichier</th>
-              <th>Montant (€)</th>
-              <th></th>
+              <th class="amount">Montant (€)</th>
             </tr>
           </thead>
           <tbody id="chiffrageBody">
-            <tr><td colspan="10" class="empty">Connectez-vous et configurez l'application pour voir vos chiffrages.</td></tr>
+            <tr><td colspan="9" class="empty">Chargement…</td></tr>
           </tbody>
         </table>
       </div>
-    </section>
-
-    <!-- Chart -->
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Budget vs Consommé par devis</h2>
-        <div class="panel-actions">
-          <button id="btnChart" class="btn">📊 Rafraîchir le graphique</button>
-        </div>
-      </div>
-      <div class="chart-wrap">
-        <canvas id="tmaChart"></canvas>
-      </div>
-    </section>
-
-    <!-- Planning -->
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Planning des projets</h2>
-        <div class="panel-actions">
-          <input id="planningProjectName" type="text" placeholder="Nom du projet" class="input" />
-          <button id="btnAddPlanning" class="btn btn-primary">➕ Ajouter au planning</button>
-          <button id="btnColorPlanning" class="btn">🎨 Colorier les groupes</button>
-        </div>
-      </div>
-      <p class="hint">Ajoute un projet avec ses 4 phases (Conception, Développement, Recette, MEP) dans l'onglet « Upcoming projects ».</p>
     </section>
   </main>
 
@@ -96,19 +81,22 @@
       <h2>⚙️ Configuration</h2>
       <label>OAuth Client ID Google
         <input id="cfgClientId" type="text" placeholder="xxxxx.apps.googleusercontent.com" />
+        <span class="field-hint">Créez des identifiants OAuth 2.0 (type : application Web) dans la Google Cloud Console. Ajoutez l'URL de cette page aux origines JavaScript autorisées.</span>
       </label>
-      <label>ID du classeur (Dashboard)
-        <input id="cfgSpreadsheetId" type="text" placeholder="ID du Google Sheet contenant Chiffrage, ConfigPhases…" />
+      <label>ID du modèle (fichier ModeleChiffrage)
+        <input id="cfgTemplateId" type="text" placeholder="ID ou URL du Google Sheet modèle" />
+        <span class="field-hint">Fichier template utilisé pour créer chaque nouveau chiffrage. Partagez-le en lecture avec votre compte.</span>
       </label>
       <label>Dossier Drive racine (fallback)
-        <input id="cfgRootFolderId" type="text" placeholder="ID du dossier utilisé si le client n'a pas de dossier configuré" />
+        <input id="cfgRootFolderId" type="text" placeholder="ID ou URL du dossier Drive racine" />
+        <span class="field-hint">Utilisé si le client n'a pas de dossier configuré. Les sous-dossiers année/mois y seront créés automatiquement.</span>
       </label>
-      <p class="hint">Ces valeurs sont stockées uniquement dans votre navigateur (localStorage).</p>
+      <p class="hint">Ces valeurs sont stockées uniquement dans votre navigateur (localStorage). Rien n'est envoyé à un serveur.</p>
 
       <hr class="divider" />
 
-      <h3 class="section-title">📁 Dossiers par client</h3>
-      <p class="hint" style="margin-top:0">Chaque client peut avoir son propre dossier Drive racine. Les sous-dossiers année / mois y seront créés automatiquement.</p>
+      <h3 class="section-title">📁 Clients et dossiers Drive</h3>
+      <p class="hint" style="margin-top:0">Chaque client peut avoir son propre dossier Drive racine. Configurez aussi les TJM par client via le bouton 💰.</p>
       <div id="clientList" class="client-list"></div>
       <div class="client-add-row">
         <input id="addClientName" type="text" placeholder="Nom du client" class="input-sm" />
@@ -127,18 +115,14 @@
   <div id="newModal" class="modal hidden">
     <div class="modal-card modal-card--tall">
       <h2>➕ Nouveau chiffrage</h2>
-      <label>N° devis<input id="newNumDevis" type="text" /></label>
+      <label>N° devis<input id="newNumDevis" type="text" placeholder="ex: DEV-2026-001" /></label>
       <label>Client *
-        <input id="newClient" type="text" list="clientDatalist" autocomplete="off" />
+        <input id="newClient" type="text" list="clientDatalist" autocomplete="off" placeholder="Sélectionnez ou saisissez un client" />
         <datalist id="clientDatalist"></datalist>
       </label>
-      <label>Projet *<input id="newProjet" type="text" /></label>
-      <label>Ticket<input id="newTicket" type="text" /></label>
+      <label>Projet *<input id="newProjet" type="text" placeholder="Nom du projet" /></label>
+      <label>Ticket<input id="newTicket" type="text" placeholder="ex: PROJ-123" /></label>
       <label>Date<input id="newDate" type="date" /></label>
-      <label>Dossier Drive
-        <input id="newFolderId" type="text" placeholder="Auto-rempli selon le client, ou saisissez un ID/URL" />
-        <span class="field-hint" id="folderHint">Laissez vide pour utiliser le dossier racine global.</span>
-      </label>
 
       <hr class="divider" />
       <div class="phase-header">
@@ -147,7 +131,7 @@
       </div>
       <div id="phaseRows" class="phase-rows"></div>
 
-      <p class="hint" style="margin-top:8px">Un nouveau classeur sera créé à partir de « ModeleChiffrage » avec les phases ci-dessus.</p>
+      <p class="hint" style="margin-top:8px">Un nouveau classeur sera créé à partir du modèle configuré, avec les phases ci-dessus. Le fichier sera placé dans le dossier Drive du client.</p>
       <div id="newError" class="banner banner-error hidden"></div>
       <div class="modal-actions">
         <button id="btnCreate" class="btn btn-primary">Créer</button>

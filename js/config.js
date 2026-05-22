@@ -3,7 +3,7 @@ const CLIENTS_KEY = 'chiffragemax.clients';
 
 const DEFAULTS = {
   clientId: '',
-  spreadsheetId: '',
+  templateId: '',
   rootFolderId: '',
 };
 
@@ -26,7 +26,7 @@ export const Config = {
 
   isComplete() {
     const c = this.load();
-    return Boolean(c.clientId && c.spreadsheetId && c.rootFolderId);
+    return Boolean(c.clientId && c.templateId && c.rootFolderId);
   },
 
   // --- Client folder map: [{ name, folderId }] ---
