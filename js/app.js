@@ -13,6 +13,7 @@ let selectedClient = '';
 let filterStatuses = new Set();
 let sortField = 'name';
 let sortAsc = true;
+let dashboardLoading = false;
 
 /* ---- Roles ---- */
 const DEFAULT_ROLES = [
@@ -115,13 +116,25 @@ function refreshClientDatalist() {
 async function loadDashboard() {
   if (!Auth.isSignedIn()) return;
   showGlobalError('');
+  dashboardLoading = true;
+  chiffrages = [];
+  renderTable();
   busy($('btnRefresh'), true, 'Chargement…');
   try {
-    chiffrages = await listChiffrages();
+    await listChiffrages((batch, clientLabel) => {
+      for (const ch of batch) {
+        if (!chiffrages.some((c) => c.id === ch.id)) chiffrages.push(ch);
+      }
+      busy($('btnRefresh'), true, `${clientLabel} — ${chiffrages.length} chargé${chiffrages.length > 1 ? 's' : ''}`);
+      renderTable();
+    });
+    dashboardLoading = false;
     renderFilters();
     renderTable();
   } catch (e) {
+    dashboardLoading = false;
     showGlobalError(e.message);
+    renderTable();
   } finally {
     busy($('btnRefresh'), false);
   }
@@ -223,9 +236,14 @@ function renderTable() {
   const visible = visibleChiffrages();
 
   if (!visible.length) {
-    const msg = selectedClient
-      ? `Aucun chiffrage trouvé pour « ${escHtml(selectedClient)} ».`
-      : 'Aucun chiffrage trouvé. Cliquez sur « Nouveau chiffrage ».';
+    let msg;
+    if (dashboardLoading) {
+      msg = 'Chargement en cours…';
+    } else if (selectedClient) {
+      msg = `Aucun chiffrage trouvé pour « ${escHtml(selectedClient)} ».`;
+    } else {
+      msg = 'Aucun chiffrage trouvé. Cliquez sur « Nouveau chiffrage ».';
+    }
     body.innerHTML = `<tr><td colspan="10" class="empty">${msg}</td></tr>`;
     return;
   }

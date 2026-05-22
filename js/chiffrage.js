@@ -221,7 +221,7 @@ async function setValidationChiffrageDropdown(spreadsheetId, sheetId) {
  * Returns { id, url, idChiffrage }.
  */
 export async function nouveauChiffrage(entry) {
-  const { numDevis, client, projet, ticket, date, targetFolderId, phases } = entry;
+  const { numDevis, client, projet, ticket, date, targetFolderId, phases, roles } = entry;
 
   if (!client || !projet) throw new Error('Renseignez au moins le Client et le Projet.');
   if (!phases?.length) throw new Error('Configurez au moins une phase.');
@@ -413,18 +413,41 @@ function parseAmount(val) {
   return Number.isFinite(n) ? n : 0;
 }
 
-// List all chiffrages by scanning client folders + the global root folder.
-export async function listChiffrages() {
-  const folderIds = [
-    ...Config.getClients().map((c) => c.folderId).filter(Boolean),
-    Config.get('rootFolderId'),
-  ].filter(Boolean);
-  const unique = [...new Set(folderIds)];
+// List all chiffrages, loading one client folder at a time to avoid Sheets API
+// rate limits (429). onBatch(chiffrages, clientName) is called after each
+// client finishes, enabling progressive UI updates.
+export async function listChiffrages(onBatch) {
+  const clients = Config.getClients().filter((c) => c.folderId);
+  const rootId = Config.get('rootFolderId');
+  const clientFolderIds = new Set(clients.map((c) => c.folderId));
+  const allResults = [];
+  const seenIds = new Set();
 
-  const files = await collectChiffrageFiles(unique);
-  const results = await Promise.all(files.map((f) => readChiffrageFile(f)));
-  // Most recent first by file name (CHI-DD/MM/YY...), best-effort.
-  return results.sort((a, b) => b.name.localeCompare(a.name));
+  const processFolder = async (folderId, label) => {
+    const files = await collectChiffrageFiles([folderId]);
+    const batch = [];
+    for (const file of files) {
+      if (seenIds.has(file.id)) continue;
+      seenIds.add(file.id);
+      try {
+        const ch = await readChiffrageFile(file);
+        allResults.push(ch);
+        batch.push(ch);
+      } catch (e) {
+        console.warn(`Impossible de lire ${file.name} :`, e.message);
+      }
+    }
+    if (batch.length) onBatch?.(batch, label);
+  };
+
+  for (const client of clients) {
+    await processFolder(client.folderId, client.name);
+  }
+  if (rootId && !clientFolderIds.has(rootId)) {
+    await processFolder(rootId, 'Racine');
+  }
+
+  return allResults;
 }
 
 // Persist a status change to the validation dropdown cell of a chiffrage file.
