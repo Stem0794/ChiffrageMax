@@ -644,6 +644,8 @@ async function createChiffrage() {
     await nouveauChiffrage({ numDevis, client, projet, ticket, date, targetFolderId, phases: getPhases(), roles });
     closeModal('newModal');
     toast('Chiffrage créé avec succès.', 'success');
+    selectedClient = client;
+    $('clientSelector').value = client;
     await loadDashboard();
   } catch (e) {
     errEl.textContent = e.message;
