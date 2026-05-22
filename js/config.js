@@ -78,6 +78,16 @@ export const Config = {
     this.saveClients(clients);
   },
 
+  // Update name/folderId while preserving TJM data.
+  updateClient(oldName, newName, folderId) {
+    const clients = this.getClients();
+    const idx = clients.findIndex((c) => c.name.trim().toLowerCase() === oldName.trim().toLowerCase());
+    if (idx >= 0) {
+      clients[idx] = { ...clients[idx], name: newName.trim(), folderId: folderId.trim() };
+      this.saveClients(clients);
+    }
+  },
+
   deleteClient(name) {
     const clients = this.getClients().filter(
       (c) => c.name.trim().toLowerCase() !== name.trim().toLowerCase(),

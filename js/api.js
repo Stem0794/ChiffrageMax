@@ -3,6 +3,10 @@ import { Auth } from './auth.js';
 const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
 const DRIVE = 'https://www.googleapis.com/drive/v3/files';
 
+// supportsAllDrives=true is required for any folder that lives in a
+// Google Workspace Shared Drive (otherwise Drive returns 404).
+const DRIVE_SHARED = 'supportsAllDrives=true&includeItemsFromAllDrives=true';
+
 async function gfetch(url, options = {}, { retryOn401 = true } = {}) {
   const token = await Auth.getToken();
   const res = await fetch(url, {
@@ -95,7 +99,7 @@ export const DriveAPI = {
       `name='${name.replace(/'/g, "\\'")}'`,
       `'${parentId}' in parents`,
     ].join(' and ');
-    return gfetch(`${DRIVE}?q=${encodeURIComponent(q)}&fields=files(id,name)`);
+    return gfetch(`${DRIVE}?q=${encodeURIComponent(q)}&fields=files(id,name)&${DRIVE_SHARED}`);
   },
 
   // Direct children (folders + files) of a folder, paginated.
@@ -108,6 +112,8 @@ export const DriveAPI = {
         q,
         fields: 'nextPageToken,files(id,name,mimeType,webViewLink)',
         pageSize: '1000',
+        supportsAllDrives: 'true',
+        includeItemsFromAllDrives: 'true',
       });
       if (pageToken) params.set('pageToken', pageToken);
       const res = await gfetch(`${DRIVE}?${params.toString()}`);
@@ -118,7 +124,7 @@ export const DriveAPI = {
   },
 
   createFolder(name, parentId) {
-    return gfetch(DRIVE, {
+    return gfetch(`${DRIVE}?${DRIVE_SHARED}`, {
       method: 'POST',
       body: JSON.stringify({
         name,
@@ -129,18 +135,22 @@ export const DriveAPI = {
   },
 
   async getFile(fileId) {
-    return gfetch(`${DRIVE}/${fileId}?fields=id,name,parents`);
+    return gfetch(`${DRIVE}/${fileId}?fields=id,name,parents&${DRIVE_SHARED}`);
   },
 
   async moveFile(fileId, addParentId) {
-    const file = await gfetch(`${DRIVE}/${fileId}?fields=parents`);
+    const file = await gfetch(`${DRIVE}/${fileId}?fields=parents&${DRIVE_SHARED}`);
     const removeParents = (file.parents || []).join(',');
-    const params = new URLSearchParams({ addParents: addParentId, fields: 'id,parents' });
+    const params = new URLSearchParams({
+      addParents: addParentId,
+      fields: 'id,parents',
+      supportsAllDrives: 'true',
+    });
     if (removeParents) params.set('removeParents', removeParents);
     return gfetch(`${DRIVE}/${fileId}?${params.toString()}`, { method: 'PATCH', body: '{}' });
   },
 
   deleteFile(fileId) {
-    return gfetch(`${DRIVE}/${fileId}`, { method: 'DELETE' });
+    return gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, { method: 'DELETE' });
   },
 };

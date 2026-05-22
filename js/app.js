@@ -326,31 +326,60 @@ function renderClientList() {
     container.innerHTML = '<p class="hint" style="margin:0 0 8px">Aucun client configuré.</p>';
     return;
   }
-  container.innerHTML = clients.map((c) => {
-    const tjm = Config.getClientTjm(c.name);
-    const tjmCount = tjm ? tjm.filter((r) => r !== null && r !== undefined && r !== '').length : 0;
-    const badge = tjmCount ? `<span class="client-tjm-badge">${tjmCount} TJM</span>` : '';
-    return `
-      <div class="client-row">
-        <span class="client-name">${escHtml(c.name)}</span>
-        <span class="client-folder" title="${escHtml(c.folderId)}">${escHtml(c.folderId)}</span>
-        ${badge}
-        <button class="btn btn-sm" data-tjm="${escHtml(c.name)}">💰</button>
-        <button class="btn btn-sm" data-delete="${escHtml(c.name)}">✕</button>
-      </div>
+  container.innerHTML = '';
+  clients.forEach((c) => {
+    const row = document.createElement('div');
+    row.className = 'client-row';
+    renderClientRow(row, c, false);
+    container.appendChild(row);
+  });
+}
+
+function renderClientRow(row, c, editing) {
+  const tjm = Config.getClientTjm(c.name);
+  const tjmCount = tjm ? tjm.filter((r) => r !== null && r !== undefined && r !== '').length : 0;
+
+  if (editing) {
+    row.innerHTML = `
+      <input class="input-sm client-edit-name" type="text" value="${escHtml(c.name)}" placeholder="Nom du client" style="min-width:100px;flex:0 0 auto" />
+      <input class="input-sm input-sm--grow client-edit-folder" type="text" value="${escHtml(c.folderId)}" placeholder="URL ou ID du dossier Drive" />
+      <button class="btn btn-sm btn-primary" data-save>✓</button>
+      <button class="btn btn-sm btn-ghost" data-cancel>✕</button>
     `;
-  }).join('');
-  container.querySelectorAll('[data-delete]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      Config.deleteClient(btn.dataset.delete);
+    row.querySelector('[data-save]').addEventListener('click', () => {
+      const newName = row.querySelector('.client-edit-name').value.trim();
+      const newFolderRaw = row.querySelector('.client-edit-folder').value.trim();
+      if (!newName || !newFolderRaw) { toast('Nom et dossier requis.', 'error'); return; }
+      const newFolder = extractFolderId(newFolderRaw) || newFolderRaw;
+      Config.updateClient(c.name, newName, newFolder);
+      refreshClientDatalist();
+      refreshClientSelector();
+      renderClientList();
+      toast(`Client « ${newName} » mis à jour.`, 'success');
+      if (Auth.isSignedIn()) loadDashboard();
+    });
+    row.querySelector('[data-cancel]').addEventListener('click', () => {
+      renderClientRow(row, c, false);
+    });
+  } else {
+    const badge = tjmCount ? `<span class="client-tjm-badge">${tjmCount} TJM</span>` : '';
+    row.innerHTML = `
+      <span class="client-name">${escHtml(c.name)}</span>
+      <span class="client-folder" title="${escHtml(c.folderId)}">${escHtml(c.folderId)}</span>
+      ${badge}
+      <button class="btn btn-sm" data-edit title="Modifier">✏️</button>
+      <button class="btn btn-sm" data-tjm title="Configurer les TJM">💰</button>
+      <button class="btn btn-sm" data-delete title="Supprimer">✕</button>
+    `;
+    row.querySelector('[data-edit]').addEventListener('click', () => renderClientRow(row, c, true));
+    row.querySelector('[data-tjm]').addEventListener('click', () => openTjmModal(c.name));
+    row.querySelector('[data-delete]').addEventListener('click', () => {
+      Config.deleteClient(c.name);
       renderClientList();
       refreshClientDatalist();
       refreshClientSelector();
     });
-  });
-  container.querySelectorAll('[data-tjm]').forEach((btn) => {
-    btn.addEventListener('click', () => openTjmModal(btn.dataset.tjm));
-  });
+  }
 }
 
 function openSettings() {
