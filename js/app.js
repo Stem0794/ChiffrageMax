@@ -2,7 +2,7 @@ import { Config } from './config.js';
 import { Auth } from './auth.js';
 import { SheetsAPI } from './api.js';
 import {
-  nouveauChiffrage, listChiffrages, setChiffrageStatus, STATUS_OPTIONS,
+  nouveauChiffrage, listChiffrages, setChiffrageStatus, deleteChiffrage, STATUS_OPTIONS,
 } from './chiffrage.js';
 import { extractSpreadsheetId, extractFolderId } from './utils.js';
 
@@ -114,7 +114,7 @@ function renderTable() {
     const msg = selectedClient
       ? `Aucun chiffrage trouvé pour « ${escHtml(selectedClient)} ».`
       : 'Aucun chiffrage trouvé. Cliquez sur « Nouveau chiffrage ».';
-    body.innerHTML = `<tr><td colspan="9" class="empty">${msg}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="10" class="empty">${msg}</td></tr>`;
     return;
   }
 
@@ -156,6 +156,16 @@ function renderTable() {
     tdMontant.className = 'amount';
     tr.appendChild(tdMontant);
 
+    // Delete action
+    const tdDel = document.createElement('td');
+    const btnDel = document.createElement('button');
+    btnDel.className = 'btn btn-sm btn-delete';
+    btnDel.textContent = '🗑';
+    btnDel.title = 'Supprimer ce chiffrage (Google Sheet)';
+    btnDel.addEventListener('click', () => onDeleteChiffrage(ch, btnDel));
+    tdDel.appendChild(btnDel);
+    tr.appendChild(tdDel);
+
     body.appendChild(tr);
   }
 }
@@ -185,6 +195,22 @@ async function onStatusChange(ch, newValue, select) {
     select.value = prev || '';
   } finally {
     select.disabled = false;
+  }
+}
+
+/* ---- Delete chiffrage ---- */
+async function onDeleteChiffrage(ch, btn) {
+  const label = ch.projet ? `« ${ch.projet} »` : ch.name;
+  if (!window.confirm(`Supprimer définitivement le chiffrage ${label} ?\n\nCette action supprime le Google Sheet — elle est irréversible.`)) return;
+  busy(btn, true);
+  try {
+    await deleteChiffrage(ch.id);
+    chiffrages = chiffrages.filter((c) => c.id !== ch.id);
+    renderTable();
+    toast('Chiffrage supprimé.', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+    busy(btn, false);
   }
 }
 
@@ -245,6 +271,11 @@ async function createChiffrage() {
   }
   if (!Config.get('templateId')) {
     errEl.textContent = 'Configurez l\'ID du modèle dans les paramètres (⚙️).';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  if (!targetFolderId && !Config.get('rootFolderId')) {
+    errEl.textContent = `Aucun dossier Drive configuré pour « ${client} » et le dossier racine est absent. Configurez un dossier pour ce client dans ⚙️ Configuration.`;
     errEl.classList.remove('hidden');
     return;
   }
@@ -338,7 +369,8 @@ function addClient() {
   renderClientList();
   refreshClientDatalist();
   refreshClientSelector();
-  toast(`Client « ${name} » enregistré.`, 'success');
+  toast(`Client « ${name} » enregistré — scan des chiffrages en cours…`, 'success');
+  if (Auth.isSignedIn()) loadDashboard();
 }
 
 /* ---- TJM modal ---- */

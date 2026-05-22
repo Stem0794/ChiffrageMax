@@ -243,17 +243,33 @@ export async function nouveauChiffrage(entry) {
   const idChiffrage = `CHI-${dateStrId}- ${cleanProjectName(projet)}`;
 
   // Resolve target Drive folder.
-  const destFolderId = targetFolderId || await resolveMonthFolder(yearStr, monthStr);
+  let destFolderId;
+  try {
+    destFolderId = targetFolderId || await resolveMonthFolder(yearStr, monthStr);
+  } catch (e) {
+    throw new Error(`Impossible de résoudre le dossier Drive racine : ${e.message}`);
+  }
 
   // Create the new spreadsheet, copy the model sheet from the template, rename, drop default sheet.
   const templateId = Config.get('templateId');
-  const model = await getModelSheet();
+  let model;
+  try {
+    model = await getModelSheet();
+  } catch (e) {
+    throw new Error(`Modèle introuvable : ${e.message} — Vérifiez l'ID du modèle dans ⚙️ Configuration.`);
+  }
+
   const created = await SheetsAPI.create(idChiffrage);
   const newId = created.spreadsheetId;
   const defaultSheetId = created.sheets[0].properties.sheetId;
 
-  const copied = await SheetsAPI.copySheetTo(templateId, model.sheetId, newId);
-  const copiedSheetId = copied.sheetId;
+  let copiedSheetId;
+  try {
+    const copied = await SheetsAPI.copySheetTo(templateId, model.sheetId, newId);
+    copiedSheetId = copied.sheetId;
+  } catch (e) {
+    throw new Error(`Impossible de copier la feuille modèle : ${e.message}`);
+  }
 
   await SheetsAPI.batchUpdate(newId, [
     { updateSheetProperties: { properties: { sheetId: copiedSheetId, title: 'Chiffrage' }, fields: 'title' } },
@@ -261,7 +277,11 @@ export async function nouveauChiffrage(entry) {
   ]);
 
   // Move the file into the chosen folder.
-  await DriveAPI.moveFile(newId, destFolderId);
+  try {
+    await DriveAPI.moveFile(newId, destFolderId);
+  } catch (e) {
+    throw new Error(`Fichier créé (${idChiffrage}) mais impossible de le déplacer vers le dossier Drive (${destFolderId}) : ${e.message} — Vérifiez que le dossier est partagé avec votre compte Google.`);
+  }
 
   // Fill the header (C1:C5). Date as YYYY-MM-DD so Sheets parses it in any locale.
   // N° devis is stored in C5 so the dashboard can read it back when scanning Drive.
@@ -399,4 +419,9 @@ export async function setChiffrageStatus(fileId, sheetName, statusRow, status) {
   if (!statusRow) throw new Error("Cellule « Validation chiffrage » introuvable dans ce fichier.");
   const sn = `'${sheetName.replace(/'/g, "''")}'`;
   await SheetsAPI.updateValues(fileId, `${sn}!A${statusRow}`, [[status]]);
+}
+
+// Permanently delete a chiffrage spreadsheet from Google Drive.
+export async function deleteChiffrage(fileId) {
+  await DriveAPI.deleteFile(fileId);
 }

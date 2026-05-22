@@ -139,4 +139,8 @@ export const DriveAPI = {
     if (removeParents) params.set('removeParents', removeParents);
     return gfetch(`${DRIVE}/${fileId}?${params.toString()}`, { method: 'PATCH', body: '{}' });
   },
+
+  deleteFile(fileId) {
+    return gfetch(`${DRIVE}/${fileId}`, { method: 'DELETE' });
+  },
 };
