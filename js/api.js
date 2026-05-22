@@ -1,0 +1,123 @@
+import { Auth } from './auth.js';
+
+const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
+const DRIVE = 'https://www.googleapis.com/drive/v3/files';
+
+async function gfetch(url, options = {}, { retryOn401 = true } = {}) {
+  const token = await Auth.getToken();
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  if (res.status === 401 && retryOn401) {
+    Auth.signOut();
+    return gfetch(url, options, { retryOn401: false });
+  }
+
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.error?.message || JSON.stringify(body);
+    } catch {
+      detail = await res.text();
+    }
+    throw new Error(`Erreur API (${res.status}) : ${detail}`);
+  }
+
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+export const SheetsAPI = {
+  get(spreadsheetId, { fields } = {}) {
+    const q = fields ? `?fields=${encodeURIComponent(fields)}` : '';
+    return gfetch(`${SHEETS}/${spreadsheetId}${q}`);
+  },
+
+  getValues(spreadsheetId, range) {
+    return gfetch(`${SHEETS}/${spreadsheetId}/values/${encodeURIComponent(range)}`);
+  },
+
+  updateValues(spreadsheetId, range, values, valueInputOption = 'USER_ENTERED') {
+    return gfetch(
+      `${SHEETS}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=${valueInputOption}`,
+      { method: 'PUT', body: JSON.stringify({ values }) },
+    );
+  },
+
+  batchUpdateValues(spreadsheetId, data, valueInputOption = 'USER_ENTERED') {
+    return gfetch(`${SHEETS}/${spreadsheetId}/values:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({ valueInputOption, data }),
+    });
+  },
+
+  appendValues(spreadsheetId, range, values, valueInputOption = 'USER_ENTERED') {
+    return gfetch(
+      `${SHEETS}/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=${valueInputOption}&insertDataOption=INSERT_ROWS`,
+      { method: 'POST', body: JSON.stringify({ values }) },
+    );
+  },
+
+  batchUpdate(spreadsheetId, requests) {
+    return gfetch(`${SHEETS}/${spreadsheetId}:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({ requests }),
+    });
+  },
+
+  create(title) {
+    return gfetch(SHEETS, {
+      method: 'POST',
+      body: JSON.stringify({ properties: { title } }),
+    });
+  },
+
+  copySheetTo(sourceSpreadsheetId, sheetId, destinationSpreadsheetId) {
+    return gfetch(`${SHEETS}/${sourceSpreadsheetId}/sheets/${sheetId}:copyTo`, {
+      method: 'POST',
+      body: JSON.stringify({ destinationSpreadsheetId }),
+    });
+  },
+};
+
+export const DriveAPI = {
+  listFolders(name, parentId) {
+    const q = [
+      "mimeType='application/vnd.google-apps.folder'",
+      'trashed=false',
+      `name='${name.replace(/'/g, "\\'")}'`,
+      `'${parentId}' in parents`,
+    ].join(' and ');
+    return gfetch(`${DRIVE}?q=${encodeURIComponent(q)}&fields=files(id,name)`);
+  },
+
+  createFolder(name, parentId) {
+    return gfetch(DRIVE, {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [parentId],
+      }),
+    });
+  },
+
+  async getFile(fileId) {
+    return gfetch(`${DRIVE}/${fileId}?fields=id,name,parents`);
+  },
+
+  async moveFile(fileId, addParentId) {
+    const file = await gfetch(`${DRIVE}/${fileId}?fields=parents`);
+    const removeParents = (file.parents || []).join(',');
+    const params = new URLSearchParams({ addParents: addParentId, fields: 'id,parents' });
+    if (removeParents) params.set('removeParents', removeParents);
+    return gfetch(`${DRIVE}/${fileId}?${params.toString()}`, { method: 'PATCH', body: '{}' });
+  },
+};

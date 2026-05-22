@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChiffrageMax — Tableau de bord</title>
+  <link rel="stylesheet" href="./css/styles.css" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">📊</span>
+      <h1>ChiffrageMax</h1>
+    </div>
+    <div class="topbar-actions">
+      <span id="userStatus" class="user-status">Non connecté</span>
+      <button id="btnSignIn" class="btn btn-primary">Se connecter</button>
+      <button id="btnSignOut" class="btn btn-ghost hidden">Déconnexion</button>
+      <button id="btnSettings" class="btn btn-ghost" title="Configuration">⚙️</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div id="configWarning" class="banner banner-warn hidden">
+      ⚠️ Configuration incomplète. Ouvrez la <button id="openSettingsLink" class="link-btn">configuration</button>
+      pour renseigner votre Client ID OAuth, l'ID du classeur et le dossier Drive.
+    </div>
+
+    <div id="globalError" class="banner banner-error hidden"></div>
+
+    <!-- Dashboard toolbar -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Chiffrages</h2>
+        <div class="panel-actions">
+          <button id="btnNew" class="btn btn-primary">➕ Nouveau chiffrage</button>
+          <button id="btnRefresh" class="btn">🔄 Recharger</button>
+          <button id="btnUpdateAll" class="btn">💶 MAJ tous les montants</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="chiffrageTable" class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>N° devis</th>
+              <th>Client</th>
+              <th>Projet</th>
+              <th>Ticket</th>
+              <th>Date</th>
+              <th>Statut</th>
+              <th>Fichier</th>
+              <th>Montant (€)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="chiffrageBody">
+            <tr><td colspan="10" class="empty">Connectez-vous et configurez l'application pour voir vos chiffrages.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Chart -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Budget vs Consommé par devis</h2>
+        <div class="panel-actions">
+          <button id="btnChart" class="btn">📊 Rafraîchir le graphique</button>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="tmaChart"></canvas>
+      </div>
+    </section>
+
+    <!-- Planning -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Planning des projets</h2>
+        <div class="panel-actions">
+          <input id="planningProjectName" type="text" placeholder="Nom du projet" class="input" />
+          <button id="btnAddPlanning" class="btn btn-primary">➕ Ajouter au planning</button>
+          <button id="btnColorPlanning" class="btn">🎨 Colorier les groupes</button>
+        </div>
+      </div>
+      <p class="hint">Ajoute un projet avec ses 4 phases (Conception, Développement, Recette, MEP) dans l'onglet « Upcoming projects ».</p>
+    </section>
+  </main>
+
+  <!-- Settings modal -->
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-card">
+      <h2>⚙️ Configuration</h2>
+      <label>OAuth Client ID Google
+        <input id="cfgClientId" type="text" placeholder="xxxxx.apps.googleusercontent.com" />
+      </label>
+      <label>ID du classeur (Dashboard)
+        <input id="cfgSpreadsheetId" type="text" placeholder="ID du Google Sheet contenant Chiffrage, ConfigPhases…" />
+      </label>
+      <label>ID du dossier Drive racine
+        <input id="cfgRootFolderId" type="text" placeholder="ID du dossier où créer les chiffrages" />
+      </label>
+      <p class="hint">Ces valeurs sont stockées uniquement dans votre navigateur (localStorage).</p>
+      <div class="modal-actions">
+        <button id="btnSaveSettings" class="btn btn-primary">Enregistrer</button>
+        <button id="btnCloseSettings" class="btn btn-ghost">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New chiffrage modal -->
+  <div id="newModal" class="modal hidden">
+    <div class="modal-card">
+      <h2>➕ Nouveau chiffrage</h2>
+      <label>N° devis<input id="newNumDevis" type="text" /></label>
+      <label>Client *<input id="newClient" type="text" /></label>
+      <label>Projet *<input id="newProjet" type="text" /></label>
+      <label>Ticket<input id="newTicket" type="text" /></label>
+      <label>Date<input id="newDate" type="date" /></label>
+      <p class="hint">Un nouveau classeur sera créé dans le dossier Drive (sous année / mois) à partir de « ModeleChiffrage », puis ajouté au tableau de bord.</p>
+      <div id="newError" class="banner banner-error hidden"></div>
+      <div class="modal-actions">
+        <button id="btnCreate" class="btn btn-primary">Créer</button>
+        <button id="btnCloseNew" class="btn btn-ghost">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
