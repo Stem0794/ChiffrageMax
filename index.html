@@ -120,7 +120,11 @@
       <label>Projet *<input id="newProjet" type="text" /></label>
       <label>Ticket<input id="newTicket" type="text" /></label>
       <label>Date<input id="newDate" type="date" /></label>
-      <p class="hint">Un nouveau classeur sera créé dans le dossier Drive (sous année / mois) à partir de « ModeleChiffrage », puis ajouté au tableau de bord.</p>
+      <label>Dossier Drive
+        <input id="newFolderId" type="text" placeholder="URL ou ID du dossier (optionnel)" />
+        <span class="field-hint">Si renseigné, le fichier est créé directement dans ce dossier. Sinon, il est rangé sous racine / année / mois.</span>
+      </label>
+      <p class="hint">Un nouveau classeur sera créé à partir de « ModeleChiffrage » et ajouté au tableau de bord.</p>
       <div id="newError" class="banner banner-error hidden"></div>
       <div class="modal-actions">
         <button id="btnCreate" class="btn btn-primary">Créer</button>

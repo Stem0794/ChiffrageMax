@@ -5,7 +5,7 @@ import { nouveauChiffrage } from './chiffrage.js';
 import { updateMontantForRow, getMontantFromChiffrage } from './montant.js';
 import { renderTmaChart } from './charts.js';
 import { ajouterProjetAuPlanning, colorierGroupesAlternes } from './planning.js';
-import { formatDateParts, extractSpreadsheetId } from './utils.js';
+import { formatDateParts, extractSpreadsheetId, extractFolderId } from './utils.js';
 
 const STATUS_OPTIONS = ['', 'Brouillon', 'Envoyé', 'Devis validé', 'Refusé'];
 
@@ -225,6 +225,8 @@ async function createChiffrage() {
   const ticket = $('newTicket').value.trim();
   const dateVal = $('newDate').value;
   const date = dateVal ? new Date(`${dateVal}T00:00:00`) : null;
+  const folderRaw = $('newFolderId').value.trim();
+  const targetFolderId = extractFolderId(folderRaw) || null;
 
   if (!client || !projet) {
     errEl.textContent = 'Le Client et le Projet sont obligatoires.';
@@ -246,7 +248,7 @@ async function createChiffrage() {
     const updatedRange = appendRes.updates.updatedRange; // e.g. Chiffrage!A7:I7
     const rowNumber = parseInt(updatedRange.match(/!\D+(\d+):/)[1], 10);
 
-    await nouveauChiffrage(rowNumber, { numDevis, client, projet, ticket, date, status: '' });
+    await nouveauChiffrage(rowNumber, { numDevis, client, projet, ticket, date, status: '', targetFolderId });
 
     closeModal('newModal');
     toast('Chiffrage créé.', 'success');
@@ -350,7 +352,7 @@ function init() {
   $('btnNew').addEventListener('click', () => {
     if (!Auth.isSignedIn()) { toast('Connectez-vous d\'abord.', 'error'); return; }
     $('newError').classList.add('hidden');
-    ['newNumDevis', 'newClient', 'newProjet', 'newTicket', 'newDate'].forEach((id) => { $(id).value = ''; });
+    ['newNumDevis', 'newClient', 'newProjet', 'newTicket', 'newDate', 'newFolderId'].forEach((id) => { $(id).value = ''; });
     openModal('newModal');
   });
   $('btnCreate').addEventListener('click', createChiffrage);

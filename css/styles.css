@@ -135,6 +135,7 @@ body {
 .modal-card h2 { margin-top: 0; font-size: 18px; }
 .modal-card label { display: block; margin-bottom: 14px; font-size: 13px; color: var(--muted); }
 .modal-card label input { margin-top: 4px; color: var(--ink); }
+.field-hint { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
 
 .toast {

@@ -191,12 +191,14 @@ async function genererChiffrageSelonConfig(newSpreadsheetId, sheetId, lastCol, i
 
 /**
  * Create a new estimate file for the dashboard row at `rowNumber` (1-based, header = 1).
- * `entry` = { numDevis, client, projet, ticket, date(Date|null), status }.
+ * `entry` = { numDevis, client, projet, ticket, date(Date|null), status, targetFolderId? }.
+ *   targetFolderId: if provided, place the file directly in that folder instead of the
+ *   default root/year/month hierarchy.
  * Returns { id, url, idChiffrage }.
  */
 export async function nouveauChiffrage(rowNumber, entry) {
   const spreadsheetId = Config.get('spreadsheetId');
-  const { numDevis, client, projet, ticket, date, status } = entry;
+  const { numDevis, client, projet, ticket, date, status, targetFolderId } = entry;
 
   if (!client || !projet) throw new Error('Renseignez au moins le Client et le Projet.');
 
@@ -219,8 +221,9 @@ export async function nouveauChiffrage(rowNumber, entry) {
 
   const idChiffrage = `CHI-${dateStrId}- ${cleanProjectName(projet)}`;
 
-  // Resolve target Drive folder (creates year/month as needed).
-  const monthFolderId = await resolveMonthFolder(yearStr, monthStr);
+  // Resolve target Drive folder.
+  // If caller passed a specific folder ID, use it directly; otherwise resolve year/month.
+  const destFolderId = targetFolderId || await resolveMonthFolder(yearStr, monthStr);
 
   // Create the new spreadsheet, copy the model sheet into it, rename, drop default sheet.
   const model = await getModelSheet();
@@ -236,8 +239,8 @@ export async function nouveauChiffrage(rowNumber, entry) {
     { deleteSheet: { sheetId: defaultSheetId } },
   ]);
 
-  // Move the file into the month folder.
-  await DriveAPI.moveFile(newId, monthFolderId);
+  // Move the file into the chosen folder.
+  await DriveAPI.moveFile(newId, destFolderId);
 
   // Fill the model header (C1:C4).
   await SheetsAPI.updateValues(newId, 'Chiffrage!C1:C4', [
