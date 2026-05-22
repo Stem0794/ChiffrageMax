@@ -46,7 +46,7 @@ a:visited { color: #a18aff; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 .user-status { color: var(--muted); font-size: 13px; }
 
-.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+.container { padding: 24px; }
 
 .panel {
   background: var(--panel);
