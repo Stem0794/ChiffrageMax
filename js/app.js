@@ -126,17 +126,22 @@ Auth.onChange(async (signedIn) => {
 /* ---- Client selector ---- */
 function refreshClientSelector() {
   const sel = $('clientSelector');
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">Tous les clients</option>';
-  Config.getClients().forEach((c) => {
+  const prev = selectedClient;
+  sel.innerHTML = '';
+  const clients = Config.getClients();
+  clients.forEach((c) => {
     const opt = document.createElement('option');
     opt.value = c.name;
     opt.textContent = c.name;
     sel.appendChild(opt);
   });
-  if (prev && [...sel.options].some((o) => o.value === prev)) {
+  // Keep current selection if still valid, otherwise default to first client
+  if (prev && clients.some((c) => c.name === prev)) {
     sel.value = prev;
     selectedClient = prev;
+  } else if (clients.length) {
+    sel.value = clients[0].name;
+    selectedClient = clients[0].name;
   } else {
     selectedClient = '';
   }
