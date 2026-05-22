@@ -1,0 +1,12 @@
+{
+  "name": "ChiffrageMax",
+  "short_name": "ChiffrageMax",
+  "description": "Gestion de chiffrages via Google Drive",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#1e293b",
+  "icons": [
+    { "src": "./icon-192.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
