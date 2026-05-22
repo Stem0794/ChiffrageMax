@@ -1,6 +1,5 @@
 import { Config } from './config.js';
 import { Auth } from './auth.js';
-import { SheetsAPI } from './api.js';
 import {
   nouveauChiffrage, listChiffrages, setChiffrageStatus, deleteChiffrage, STATUS_OPTIONS,
 } from './chiffrage.js';
@@ -133,7 +132,11 @@ function renderTable() {
       if ((ch.status || '') === opt) o.selected = true;
       select.appendChild(o);
     }
-    select.addEventListener('change', () => onStatusChange(ch, select.value, select));
+    applyStatusStyle(select, ch.status || '');
+    select.addEventListener('change', () => {
+      applyStatusStyle(select, select.value);
+      onStatusChange(ch, select.value, select);
+    });
     tdStatus.appendChild(select);
     tr.appendChild(tdStatus);
 
@@ -182,6 +185,22 @@ function formatMontant(v) {
   return n.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' €';
 }
 
+const STATUS_STYLES = {
+  '':             { bg: '#1c2030', color: '#7a8698' },
+  'Envoyé':       { bg: '#78350f', color: '#fde68a' },
+  'Validé':       { bg: '#064e3b', color: '#6ee7b7' },
+  'Passé en TMA': { bg: '#1e3a8a', color: '#93c5fd' },
+  'Refusé':       { bg: '#7f1d1d', color: '#fca5a5' },
+  'Annulé':       { bg: '#1f2937', color: '#9ca3af' },
+};
+
+function applyStatusStyle(select, value) {
+  const s = STATUS_STYLES[value] || STATUS_STYLES[''];
+  select.style.background = s.bg;
+  select.style.color = s.color;
+  select.style.borderColor = s.bg;
+}
+
 /* ---- Status change ---- */
 async function onStatusChange(ch, newValue, select) {
   const prev = ch.status;
@@ -193,6 +212,7 @@ async function onStatusChange(ch, newValue, select) {
   } catch (e) {
     toast(e.message, 'error');
     select.value = prev || '';
+    applyStatusStyle(select, prev || '');
   } finally {
     select.disabled = false;
   }
@@ -374,72 +394,41 @@ function addClient() {
 }
 
 /* ---- TJM modal ---- */
-const FALLBACK_ROLE_NAMES = [
+const TJM_ROLE_NAMES = [
   'Production Director', 'Project Director', 'Senior Project Manager',
   'Project Manager', 'Data Analyst', 'Designer UX', 'Designer UI',
   'CTO', 'Tech lead', 'SRE', 'Full Stack Developer',
 ];
-const TJM_COL_COUNT = 11;
+const TJM_DEFAULTS = [920, 920, 880, 720, 880, 720, 720, 1400, 1050, 1050, 880];
+const TJM_COL_COUNT = TJM_ROLE_NAMES.length;
 
 let tjmClientTarget = null;
-let tjmRoleNames = [...FALLBACK_ROLE_NAMES];
 
-async function openTjmModal(clientName) {
+function openTjmModal(clientName) {
   tjmClientTarget = clientName;
   $('tjmClientLabel').textContent = clientName;
-  const existing = Config.getClientTjm(clientName) || new Array(TJM_COL_COUNT).fill('');
-  renderTjmRows(existing, tjmRoleNames);
+  const saved = Config.getClientTjm(clientName);
+  renderTjmRows(saved || [...TJM_DEFAULTS]);
   openModal('tjmModal');
-  await refreshTjmRoleNames();
 }
 
-async function refreshTjmRoleNames() {
-  const templateId = Config.get('templateId');
-  if (!Auth.isSignedIn() || !templateId) return;
-  try {
-    const res = await SheetsAPI.getValues(templateId, 'ModeleChiffrage!B6:L6');
-    const names = res.values?.[0] || [];
-    if (names.filter(Boolean).length > 0) {
-      tjmRoleNames = names;
-      const labels = $('tjmRows').querySelectorAll('.tjm-role');
-      names.forEach((name, i) => { if (labels[i] && name) labels[i].textContent = name; });
-    }
-  } catch { /* keep fallback names */ }
-}
-
-function renderTjmRows(values, names) {
+function renderTjmRows(values) {
   const container = $('tjmRows');
   container.innerHTML = '';
   for (let i = 0; i < TJM_COL_COUNT; i++) {
     const row = document.createElement('div');
     row.className = 'tjm-row';
     row.innerHTML = `
-      <span class="tjm-role">${escHtml(names[i] || `Rôle ${i + 1}`)}</span>
-      <input type="number" min="0" step="10" value="${values[i] ?? ''}" placeholder="Modèle" data-idx="${i}" />
+      <span class="tjm-role">${escHtml(TJM_ROLE_NAMES[i])}</span>
+      <input type="number" min="0" step="10" value="${values[i] ?? TJM_DEFAULTS[i]}" placeholder="${TJM_DEFAULTS[i]}" data-idx="${i}" />
       <span class="tjm-unit">€/j</span>
     `;
     container.appendChild(row);
   }
 }
 
-async function loadTjmFromModel() {
-  const btn = $('btnLoadTjmModel');
-  const templateId = Config.get('templateId');
-  if (!templateId) { toast('ID du modèle non configuré.', 'error'); return; }
-  busy(btn, true, '…');
-  try {
-    const res = await SheetsAPI.getValues(templateId, 'ModeleChiffrage!B7:L7');
-    const values = (res.values?.[0] || []).map((v) => {
-      const n = parseFloat(String(v).replace(',', '.'));
-      return Number.isFinite(n) ? n : '';
-    });
-    renderTjmRows(values, tjmRoleNames);
-    toast('Tarifs chargés depuis le modèle.', 'success');
-  } catch (e) {
-    toast(e.message, 'error');
-  } finally {
-    busy(btn, false);
-  }
+function resetTjmToDefaults() {
+  renderTjmRows([...TJM_DEFAULTS]);
 }
 
 function saveTjm() {
@@ -504,7 +493,7 @@ function init() {
   $('btnCloseNew').addEventListener('click', () => closeModal('newModal'));
 
   // TJM
-  $('btnLoadTjmModel').addEventListener('click', loadTjmFromModel);
+  $('btnResetTjm').addEventListener('click', resetTjmToDefaults);
   $('btnSaveTjm').addEventListener('click', saveTjm);
   $('btnCloseTjm').addEventListener('click', () => closeModal('tjmModal'));
 
