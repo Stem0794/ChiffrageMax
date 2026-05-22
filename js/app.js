@@ -249,7 +249,7 @@ async function createChiffrage() {
     const updatedRange = appendRes.updates.updatedRange; // e.g. Chiffrage!A7:I7
     const rowNumber = parseInt(updatedRange.match(/!\D+(\d+):/)[1], 10);
 
-    await nouveauChiffrage(rowNumber, { numDevis, client, projet, ticket, date, status: '', targetFolderId });
+    await nouveauChiffrage(rowNumber, { numDevis, client, projet, ticket, date, status: '', targetFolderId, phases: getPhases() });
 
     closeModal('newModal');
     toast('Chiffrage créé.', 'success');
@@ -302,6 +302,56 @@ async function colorPlanning() {
     toast(e.message, 'error');
   } finally {
     busy(btn, false);
+  }
+}
+
+/* ---------- Phase builder ---------- */
+let phasesData = [{ items: 1 }]; // [{items: number}], index+1 = phase number
+
+function renderPhaseRows() {
+  const container = $('phaseRows');
+  container.innerHTML = '';
+  phasesData.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'phase-row';
+    row.innerHTML = `
+      <span class="phase-row-label">Phase ${i + 1}</span>
+      <input type="number" min="1" max="50" value="${p.items}" data-idx="${i}" />
+      <span class="phase-row-unit">ligne(s)</span>
+      <button type="button" class="btn btn-del" data-idx="${i}" ${phasesData.length === 1 ? 'disabled' : ''}>✕</button>
+    `;
+    row.querySelector('input').addEventListener('input', (e) => {
+      const v = parseInt(e.target.value, 10);
+      phasesData[i].items = Number.isFinite(v) && v > 0 ? v : 1;
+    });
+    row.querySelector('.btn-del').addEventListener('click', (e) => {
+      const idx = Number(e.currentTarget.dataset.idx);
+      phasesData.splice(idx, 1);
+      renderPhaseRows();
+    });
+    container.appendChild(row);
+  });
+}
+
+function addPhase() {
+  phasesData.push({ items: 1 });
+  renderPhaseRows();
+}
+
+function getPhases() {
+  return phasesData.map((p, i) => ({ phase: i + 1, items: Math.max(1, p.items) }));
+}
+
+async function initPhasesFromConfig() {
+  try {
+    const { readPhasesConfig } = await import('./chiffrage.js');
+    const cfgPhases = await readPhasesConfig();
+    if (cfgPhases.length) {
+      phasesData = cfgPhases.map((p) => ({ items: p.items }));
+      renderPhaseRows();
+    }
+  } catch {
+    // Leave default if ConfigPhases is unreadable.
   }
 }
 
@@ -423,14 +473,19 @@ function init() {
   $('btnRefresh').addEventListener('click', loadDashboard);
   $('btnUpdateAll').addEventListener('click', updateAllMontants);
 
-  $('btnNew').addEventListener('click', () => {
+  $('btnNew').addEventListener('click', async () => {
     if (!Auth.isSignedIn()) { toast('Connectez-vous d\'abord.', 'error'); return; }
     $('newError').classList.add('hidden');
     $('folderHint').textContent = 'Laissez vide pour utiliser le dossier racine global.';
     folderAutoFilled = false;
     ['newNumDevis', 'newClient', 'newProjet', 'newTicket', 'newDate', 'newFolderId'].forEach((id) => { $(id).value = ''; });
+    // Reset to 1 phase / 1 item, then try to pre-fill from ConfigPhases.
+    phasesData = [{ items: 1 }];
+    renderPhaseRows();
     openModal('newModal');
+    await initPhasesFromConfig();
   });
+  $('btnAddPhase').addEventListener('click', addPhase);
   $('newClient').addEventListener('input', onClientInput);
   $('newClient').addEventListener('change', onClientInput);
   $('newFolderId').addEventListener('input', () => { folderAutoFilled = false; });

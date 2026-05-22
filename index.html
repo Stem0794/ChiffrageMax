@@ -125,7 +125,7 @@
 
   <!-- New chiffrage modal -->
   <div id="newModal" class="modal hidden">
-    <div class="modal-card">
+    <div class="modal-card modal-card--tall">
       <h2>➕ Nouveau chiffrage</h2>
       <label>N° devis<input id="newNumDevis" type="text" /></label>
       <label>Client *
@@ -139,7 +139,15 @@
         <input id="newFolderId" type="text" placeholder="Auto-rempli selon le client, ou saisissez un ID/URL" />
         <span class="field-hint" id="folderHint">Laissez vide pour utiliser le dossier racine global.</span>
       </label>
-      <p class="hint">Un nouveau classeur sera créé à partir de « ModeleChiffrage » et ajouté au tableau de bord.</p>
+
+      <hr class="divider" />
+      <div class="phase-header">
+        <h3 class="section-title">📐 Phases du chiffrage</h3>
+        <button id="btnAddPhase" type="button" class="btn btn-sm">+ Phase</button>
+      </div>
+      <div id="phaseRows" class="phase-rows"></div>
+
+      <p class="hint" style="margin-top:8px">Un nouveau classeur sera créé à partir de « ModeleChiffrage » avec les phases ci-dessus.</p>
       <div id="newError" class="banner banner-error hidden"></div>
       <div class="modal-actions">
         <button id="btnCreate" class="btn btn-primary">Créer</button>

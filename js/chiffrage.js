@@ -202,7 +202,10 @@ export async function nouveauChiffrage(rowNumber, entry) {
 
   if (!client || !projet) throw new Error('Renseignez au moins le Client et le Projet.');
 
-  const phases = await readPhasesConfig();
+  // Use phases passed by the caller; fall back to the ConfigPhases sheet.
+  const phases = (entry.phases?.length)
+    ? entry.phases
+    : await readPhasesConfig();
   if (!phases.length) throw new Error('Aucune configuration dans ConfigPhases.');
 
   const phase1Config = phases[0];

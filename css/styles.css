@@ -143,6 +143,23 @@ body {
 .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0 16px; }
 .section-title { font-size: 14px; margin: 0 0 4px; color: var(--ink); }
 
+.phase-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.phase-header .section-title { margin: 0; }
+.phase-rows { display: flex; flex-direction: column; gap: 6px; }
+.phase-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; background: #f9fafb; border: 1px solid var(--border);
+  border-radius: 8px; font-size: 13px;
+}
+.phase-row-label { font-weight: 600; color: var(--muted); min-width: 64px; }
+.phase-row input[type=number] {
+  width: 64px; border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 8px; font-size: 13px; text-align: center;
+}
+.phase-row-unit { color: var(--muted); flex: 1; }
+.phase-row .btn-del { padding: 4px 8px; font-size: 12px; color: var(--danger); border-color: transparent; background: transparent; }
+.phase-row .btn-del:hover { background: #fdecea; }
+
 .client-list { margin-bottom: 10px; }
 .client-row {
   display: flex; align-items: center; gap: 8px;
