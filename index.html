@@ -52,20 +52,34 @@
           <button id="btnRefresh" class="btn">🔄 Recharger</button>
         </div>
       </div>
+
+      <!-- Filter / sort bar -->
+      <div class="filter-bar">
+        <div id="statusPills" class="status-pills"></div>
+        <select id="sortSelect" class="input-sm sort-select">
+          <option value="name-desc">Nom ↓</option>
+          <option value="name-asc">Nom ↑</option>
+          <option value="date-desc">Date ↓</option>
+          <option value="date-asc">Date ↑</option>
+          <option value="montant-desc">Montant ↓</option>
+          <option value="montant-asc">Montant ↑</option>
+        </select>
+      </div>
+
       <div class="table-wrap">
         <table id="chiffrageTable" class="data-table">
           <thead>
             <tr>
-              <th>ID fichier</th>
-              <th>N° devis</th>
-              <th>Client</th>
-              <th>Projet</th>
-              <th>Ticket</th>
-              <th>Date</th>
-              <th>Statut</th>
-              <th>Fichier</th>
-              <th class="amount">Montant (€)</th>
-              <th></th>
+              <th class="col-id">Nom du fichier</th>
+              <th class="col-devis">N° devis</th>
+              <th class="col-client">Client</th>
+              <th class="col-projet">Projet</th>
+              <th class="col-ticket">Ticket</th>
+              <th class="col-date">Date</th>
+              <th class="col-status">Statut</th>
+              <th class="col-link">Fichier</th>
+              <th class="col-amount amount">Montant (€)</th>
+              <th class="col-actions"></th>
             </tr>
           </thead>
           <tbody id="chiffrageBody">
@@ -97,7 +111,7 @@
       <hr class="divider" />
 
       <h3 class="section-title">📁 Clients et dossiers Drive</h3>
-      <p class="hint" style="margin-top:0">Chaque client peut avoir son propre dossier Drive racine. Configurez aussi les TJM par client via le bouton 💰.</p>
+      <p class="hint" style="margin-top:0">Chaque client peut avoir son propre dossier Drive racine. Configurez aussi les rôles/TJM par client via le bouton 💰.</p>
       <div id="clientList" class="client-list"></div>
       <div class="client-add-row">
         <input id="addClientName" type="text" placeholder="Nom du client" class="input-sm" />
@@ -112,34 +126,39 @@
     </div>
   </div>
 
-  <!-- New chiffrage modal -->
+  <!-- New chiffrage modal — wide to fit phases + roles without scrolling -->
   <div id="newModal" class="modal hidden">
-    <div class="modal-card modal-card--tall">
+    <div class="modal-card modal-card--tall modal-card--wide">
       <h2>➕ Nouveau chiffrage</h2>
-      <label>N° devis<input id="newNumDevis" type="text" placeholder="ex: DEV-2026-001" /></label>
-      <label>Client *
-        <input id="newClient" type="text" list="clientDatalist" autocomplete="off" placeholder="Sélectionnez ou saisissez un client" />
-        <datalist id="clientDatalist"></datalist>
-      </label>
-      <label>Projet *<input id="newProjet" type="text" placeholder="Nom du projet" /></label>
-      <label>Ticket<input id="newTicket" type="text" placeholder="ex: PROJ-123" /></label>
-      <label>Date<input id="newDate" type="date" /></label>
-
-      <hr class="divider" />
-      <div class="phase-header">
-        <h3 class="section-title">📐 Phases du chiffrage</h3>
-        <button id="btnAddPhase" type="button" class="btn btn-sm">+ Phase</button>
+      <div class="new-form-grid">
+        <label>N° devis<input id="newNumDevis" type="text" placeholder="ex: DEV-2026-001" /></label>
+        <label>Client *
+          <input id="newClient" type="text" list="clientDatalist" autocomplete="off" placeholder="Sélectionnez ou saisissez un client" />
+          <datalist id="clientDatalist"></datalist>
+        </label>
+        <label>Projet *<input id="newProjet" type="text" placeholder="Nom du projet" /></label>
+        <label>Ticket<input id="newTicket" type="text" placeholder="ex: PROJ-123" /></label>
+        <label>Date<input id="newDate" type="date" /></label>
       </div>
-      <div id="phaseRows" class="phase-rows"></div>
 
-      <hr class="divider" />
-      <div class="phase-header">
-        <h3 class="section-title">👥 Rôles inclus</h3>
-        <span style="font-size:12px;color:var(--muted)">Décochez les rôles absents du projet</span>
+      <div class="new-form-columns">
+        <div class="new-form-col">
+          <div class="phase-header">
+            <h3 class="section-title">📐 Phases</h3>
+            <button id="btnAddPhase" type="button" class="btn btn-sm">+ Phase</button>
+          </div>
+          <div id="phaseRows" class="phase-rows"></div>
+        </div>
+        <div class="new-form-col">
+          <div class="phase-header">
+            <h3 class="section-title">👥 Rôles inclus</h3>
+            <span style="font-size:12px;color:var(--muted)">Décochez les rôles absents</span>
+          </div>
+          <div id="roleCheckboxes" class="role-checkboxes role-checkboxes--col"></div>
+        </div>
       </div>
-      <div id="roleCheckboxes" class="role-checkboxes"></div>
 
-      <p class="hint" style="margin-top:8px">Un nouveau classeur sera créé à partir du modèle configuré. Les rôles décochés seront masqués dans la feuille générée.</p>
+      <p class="hint" style="margin-top:8px;padding-left:0">Les rôles décochés seront masqués dans la feuille générée.</p>
       <div id="newError" class="banner banner-error hidden"></div>
       <div class="modal-actions">
         <button id="btnCreate" class="btn btn-primary">Créer</button>
@@ -155,7 +174,6 @@
       <p class="hint" style="margin:0 0 12px">
         Activez/désactivez les rôles, renommez-les ou ajustez les TJM pour ce client.
         Les rôles désactivés seront masqués dans tous les nouveaux chiffrages pour ce client.
-        Le bouton ↩ par ligne restaure les valeurs par défaut de ce rôle uniquement.
       </p>
       <div id="roleModalRows" class="role-modal-rows"></div>
       <div class="modal-actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:16px">
@@ -169,7 +187,6 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
-
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>

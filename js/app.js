@@ -1,5 +1,6 @@
 import { Config } from './config.js';
 import { Auth } from './auth.js';
+import { SheetsAPI, DriveAPI } from './api.js';
 import {
   nouveauChiffrage, listChiffrages, setChiffrageStatus, deleteChiffrage, STATUS_OPTIONS,
 } from './chiffrage.js';
@@ -9,6 +10,7 @@ const $ = (id) => document.getElementById(id);
 
 let chiffrages = [];
 let selectedClient = '';
+let filterStatuses = new Set();
 
 /* ---- Roles ---- */
 const DEFAULT_ROLES = [
@@ -25,7 +27,6 @@ const DEFAULT_ROLES = [
   { name: 'Full Stack Developer',   rate: 880  },
 ];
 
-// Merge saved client roles with defaults; always returns 11-item array.
 function getRolesForClient(clientName) {
   const saved = clientName ? Config.getClientRoles(clientName) : null;
   return DEFAULT_ROLES.map((def, i) => {
@@ -115,6 +116,7 @@ async function loadDashboard() {
   busy($('btnRefresh'), true, 'Chargement…');
   try {
     chiffrages = await listChiffrages();
+    renderFilters();
     renderTable();
   } catch (e) {
     showGlobalError(e.message);
@@ -123,12 +125,84 @@ async function loadDashboard() {
   }
 }
 
-function visibleChiffrages() {
-  if (!selectedClient) return chiffrages;
-  const key = selectedClient.trim().toLowerCase();
-  return chiffrages.filter((c) => (c.client || '').trim().toLowerCase() === key);
+/* ---- Filters / sort ---- */
+function parseDate(str) {
+  if (!str) return 0;
+  const m = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])).getTime();
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
 }
 
+function visibleChiffrages() {
+  let list = chiffrages;
+
+  if (selectedClient) {
+    const key = selectedClient.trim().toLowerCase();
+    list = list.filter((c) => (c.client || '').trim().toLowerCase() === key);
+  }
+
+  if (filterStatuses.size > 0) {
+    list = list.filter((c) => filterStatuses.has(c.status || ''));
+  }
+
+  const sortVal = $('sortSelect')?.value || 'name-desc';
+  const dashIdx = sortVal.lastIndexOf('-');
+  const field = sortVal.slice(0, dashIdx);
+  const asc   = sortVal.slice(dashIdx + 1) === 'asc';
+
+  return [...list].sort((a, b) => {
+    let va, vb;
+    if (field === 'montant') {
+      va = typeof a.montant === 'number' ? a.montant : parseFloat(String(a.montant || '').replace(',', '.')) || 0;
+      vb = typeof b.montant === 'number' ? b.montant : parseFloat(String(b.montant || '').replace(',', '.')) || 0;
+    } else if (field === 'date') {
+      va = parseDate(a.date);
+      vb = parseDate(b.date);
+    } else {
+      va = (a.name || '').toLowerCase();
+      vb = (b.name || '').toLowerCase();
+    }
+    if (va < vb) return asc ? -1 : 1;
+    if (va > vb) return asc ? 1 : -1;
+    return 0;
+  });
+}
+
+function renderFilters() {
+  const pillsEl = $('statusPills');
+  pillsEl.innerHTML = '';
+
+  const allPill = document.createElement('button');
+  allPill.type = 'button';
+  allPill.className = `status-pill${filterStatuses.size === 0 ? ' active' : ''}`;
+  allPill.textContent = 'Tous';
+  allPill.addEventListener('click', () => { filterStatuses.clear(); renderFilters(); renderTable(); });
+  pillsEl.appendChild(allPill);
+
+  STATUS_OPTIONS.filter((s) => s).forEach((s) => {
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    const st = STATUS_STYLES[s];
+    const active = filterStatuses.has(s);
+    pill.className = `status-pill${active ? ' active' : ''}`;
+    if (active && st) {
+      pill.style.background = st.bg;
+      pill.style.color = st.color;
+      pill.style.borderColor = st.bg;
+    }
+    pill.textContent = s;
+    pill.addEventListener('click', () => {
+      if (filterStatuses.has(s)) filterStatuses.delete(s);
+      else filterStatuses.add(s);
+      renderFilters();
+      renderTable();
+    });
+    pillsEl.appendChild(pill);
+  });
+}
+
+/* ---- Table rendering ---- */
 function renderTable() {
   const body = $('chiffrageBody');
   body.innerHTML = '';
@@ -144,7 +218,30 @@ function renderTable() {
 
   for (const ch of visible) {
     const tr = document.createElement('tr');
-    [ch.name, ch.numDevis, ch.client, ch.projet, ch.ticket, ch.date].forEach((v) => tr.appendChild(cell(v)));
+
+    // Filename — not directly editable (would need Drive rename)
+    tr.appendChild(cell(ch.name));
+
+    // Editable fields
+    const tdDevis = cell(ch.numDevis);
+    makeEditableCell(tdDevis, ch, 'numDevis');
+    tr.appendChild(tdDevis);
+
+    const tdClient = cell(ch.client);
+    makeEditableCell(tdClient, ch, 'client');
+    tr.appendChild(tdClient);
+
+    const tdProjet = cell(ch.projet);
+    makeEditableCell(tdProjet, ch, 'projet');
+    tr.appendChild(tdProjet);
+
+    const tdTicket = cell(ch.ticket);
+    makeEditableCell(tdTicket, ch, 'ticket');
+    tr.appendChild(tdTicket);
+
+    const tdDate = cell(ch.date);
+    makeEditableCell(tdDate, ch, 'date');
+    tr.appendChild(tdDate);
 
     // Status select
     const tdStatus = document.createElement('td');
@@ -221,6 +318,72 @@ function applyStatusStyle(select, value) {
   select.style.background = s.bg;
   select.style.color = s.color;
   select.style.borderColor = s.bg;
+}
+
+/* ---- Inline cell editing ---- */
+const FIELD_CELL = { numDevis: 'C5', client: 'C1', projet: 'C2', ticket: 'C3', date: 'C4' };
+
+async function saveField(ch, field, value) {
+  const cellAddr = FIELD_CELL[field];
+  if (!cellAddr) throw new Error(`Champ inconnu : ${field}`);
+  await SheetsAPI.updateValues(ch.id, `${ch.sheetName}!${cellAddr}`, [[value]]);
+  if (field === 'client') {
+    const newFolderId = Config.getClientFolder(value);
+    if (newFolderId) {
+      await DriveAPI.moveFile(ch.id, newFolderId);
+    }
+  }
+}
+
+function makeEditableCell(td, ch, field) {
+  td.classList.add('editable-cell');
+  td.addEventListener('click', () => {
+    if (td.classList.contains('editing')) return;
+    const prev = String(ch[field] ?? '');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = prev;
+    input.className = 'inline-edit-input';
+    td.textContent = '';
+    td.classList.add('editing');
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    let done = false;
+
+    const cancel = () => {
+      if (done) return;
+      done = true;
+      td.classList.remove('editing');
+      td.textContent = prev;
+    };
+
+    const confirm = async () => {
+      if (done) return;
+      done = true;
+      const newVal = input.value.trim();
+      td.classList.remove('editing');
+      if (newVal === prev) { td.textContent = prev; return; }
+      td.textContent = '…';
+      try {
+        await saveField(ch, field, newVal);
+        ch[field] = newVal;
+        td.textContent = newVal;
+        toast('Modifié.', 'success');
+        if (field === 'client') renderTable();
+      } catch (e) {
+        td.textContent = prev;
+        toast(e.message, 'error');
+      }
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); confirm(); }
+      if (e.key === 'Escape') cancel();
+    });
+    input.addEventListener('blur', confirm);
+  });
 }
 
 /* ---- Status change ---- */
@@ -557,6 +720,8 @@ function init() {
     renderTable();
   });
 
+  $('sortSelect').addEventListener('change', () => renderTable());
+
   $('btnRefresh').addEventListener('click', loadDashboard);
 
   $('btnNew').addEventListener('click', () => {
@@ -587,6 +752,7 @@ function init() {
   $('btnCloseRoles').addEventListener('click', () => closeModal('rolesModal'));
 
   refreshClientDatalist();
+  renderFilters();
   showApp(Auth.isSignedIn());
   if (Auth.isSignedIn()) { refreshClientSelector(); loadDashboard(); }
 }
