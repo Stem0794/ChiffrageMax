@@ -187,6 +187,39 @@ async function genererChiffrageSelonConfig(newSpreadsheetId, sheetId, lastCol, i
       fields: 'userEnteredFormat(backgroundColor,textFormat)',
     },
   }]);
+
+  // --- "Validation chiffrage" dropdown ---
+  // Scan column A for the label (it shifts down with phase insertions), then apply
+  // a dropdown validation to the cell immediately below it.
+  await setValidationChiffrageDropdown(newSpreadsheetId, sheetId);
+}
+
+const VALIDATION_OPTIONS = ['Envoyé', 'Validé', 'Passé en TMA', 'Refusé', 'Annulé'];
+
+async function setValidationChiffrageDropdown(spreadsheetId, sheetId) {
+  const res = await SheetsAPI.getValues(spreadsheetId, 'Chiffrage!A:A');
+  const colA = (res.values || []).flat();
+  const labelIdx = colA.findIndex((v) => String(v).toLowerCase().includes('validation chiffrage'));
+  if (labelIdx < 0) return; // label not present in model — skip
+
+  const dropdownRow0 = labelIdx + 1; // 0-based index of the cell below the label
+  await SheetsAPI.batchUpdate(spreadsheetId, [{
+    setDataValidation: {
+      range: {
+        sheetId,
+        startRowIndex: dropdownRow0, endRowIndex: dropdownRow0 + 1,
+        startColumnIndex: 0, endColumnIndex: 1,
+      },
+      rule: {
+        condition: {
+          type: 'ONE_OF_LIST',
+          values: VALIDATION_OPTIONS.map((v) => ({ userEnteredValue: v })),
+        },
+        showCustomUi: true,
+        strict: false,
+      },
+    },
+  }]);
 }
 
 /**
@@ -246,9 +279,10 @@ export async function nouveauChiffrage(rowNumber, entry) {
   await DriveAPI.moveFile(newId, destFolderId);
 
   // Fill the model header (C1:C4).
+  // Pass date as YYYY-MM-DD so Sheets parses it correctly in any locale.
+  const dateValue = dateIsUnknown ? 'Unknown' : date.toISOString().split('T')[0];
   await SheetsAPI.updateValues(newId, 'Chiffrage!C1:C4', [
-    [client], [projet], [ticket || ''],
-    [dateIsUnknown ? 'Unknown' : formatDateParts(date).dateStrId],
+    [client], [projet], [ticket || ''], [dateValue],
   ]);
 
   // Generate phases / items / formulas.
