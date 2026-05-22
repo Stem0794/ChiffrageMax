@@ -172,6 +172,13 @@ body {
 .input-sm { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 13px; min-width: 0; }
 .input-sm--grow { flex: 1; }
 .btn-sm { padding: 6px 12px; font-size: 13px; white-space: nowrap; }
+.client-tjm-badge { font-size: 11px; background: #e8f0fe; color: var(--primary); border-radius: 10px; padding: 2px 6px; white-space: nowrap; }
+
+.tjm-rows { display: flex; flex-direction: column; gap: 6px; }
+.tjm-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.tjm-role { flex: 1; color: var(--ink); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tjm-row input[type=number] { width: 90px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px; text-align: right; }
+.tjm-unit { color: var(--muted); font-size: 12px; min-width: 28px; }
 
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);

@@ -156,6 +156,22 @@
     </div>
   </div>
 
+  <!-- TJM per-client modal -->
+  <div id="tjmModal" class="modal hidden">
+    <div class="modal-card modal-card--tall">
+      <h2>💰 TJM — <span id="tjmClientLabel"></span></h2>
+      <p class="hint" style="margin:0 0 12px">Les tarifs configurés ici remplaceront la ligne TJM du modèle (B7:L7) lors de la création d'un chiffrage pour ce client. Laissez un champ vide pour garder la valeur du modèle.</p>
+      <div id="tjmRows" class="tjm-rows"></div>
+      <div class="modal-actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <button id="btnLoadTjmModel" class="btn">⬇️ Charger depuis le modèle</button>
+        <div style="display:flex;gap:8px">
+          <button id="btnSaveTjm" class="btn btn-primary">Enregistrer</button>
+          <button id="btnCloseTjm" class="btn btn-ghost">Fermer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
   <script type="module" src="./js/app.js"></script>

@@ -285,6 +285,19 @@ export async function nouveauChiffrage(rowNumber, entry) {
     [client], [projet], [ticket || ''], [dateValue],
   ]);
 
+  // Apply client-specific TJM rates to row 7 (B7:L7), overriding the model defaults.
+  // Only cells with an explicit rate are written; blank entries keep the model value.
+  const clientTjm = Config.getClientTjm(client);
+  if (Array.isArray(clientTjm)) {
+    const tjmUpdates = [];
+    clientTjm.forEach((rate, i) => {
+      if (rate !== null && rate !== undefined && rate !== '') {
+        tjmUpdates.push({ range: `Chiffrage!${colLetter(2 + i)}7`, values: [[rate]] });
+      }
+    });
+    if (tjmUpdates.length) await SheetsAPI.batchUpdateValues(newId, tjmUpdates);
+  }
+
   // Generate phases / items / formulas.
   const lastCol = model.gridProperties?.columnCount || 15;
   await genererChiffrageSelonConfig(newId, copiedSheetId, lastCol, phase1Config.items, otherPhases);

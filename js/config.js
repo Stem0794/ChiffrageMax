@@ -50,11 +50,28 @@ export const Config = {
     return entry?.folderId || null;
   },
 
+  // tjm: array of rates aligned to B7:L7 (11 values). null/undefined entries = keep model default.
+  getClientTjm(clientName) {
+    if (!clientName) return null;
+    const key = clientName.trim().toLowerCase();
+    const entry = this.getClients().find((c) => c.name.trim().toLowerCase() === key);
+    return entry?.tjm || null;
+  },
+
+  setClientTjm(name, tjm) {
+    const clients = this.getClients();
+    const idx = clients.findIndex((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase());
+    if (idx >= 0) {
+      clients[idx] = { ...clients[idx], tjm };
+      this.saveClients(clients);
+    }
+  },
+
   upsertClient(name, folderId) {
     const clients = this.getClients();
     const idx = clients.findIndex((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase());
     if (idx >= 0) {
-      clients[idx] = { name: name.trim(), folderId: folderId.trim() };
+      clients[idx] = { ...clients[idx], name: name.trim(), folderId: folderId.trim() };
     } else {
       clients.push({ name: name.trim(), folderId: folderId.trim() });
     }

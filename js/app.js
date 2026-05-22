@@ -366,19 +366,29 @@ function renderClientList() {
     container.innerHTML = '<p class="hint" style="margin:0 0 8px">Aucun client configuré.</p>';
     return;
   }
-  container.innerHTML = clients.map((c) => `
-    <div class="client-row">
-      <span class="client-name">${escHtml(c.name)}</span>
-      <span class="client-folder" title="${escHtml(c.folderId)}">${escHtml(c.folderId)}</span>
-      <button class="btn btn-sm" data-delete="${escHtml(c.name)}">✕</button>
-    </div>
-  `).join('');
+  container.innerHTML = clients.map((c) => {
+    const tjm = Config.getClientTjm(c.name);
+    const tjmCount = tjm ? tjm.filter((r) => r !== null && r !== undefined && r !== '').length : 0;
+    const badge = tjmCount ? `<span class="client-tjm-badge">${tjmCount} TJM</span>` : '';
+    return `
+      <div class="client-row">
+        <span class="client-name">${escHtml(c.name)}</span>
+        <span class="client-folder" title="${escHtml(c.folderId)}">${escHtml(c.folderId)}</span>
+        ${badge}
+        <button class="btn btn-sm" data-tjm="${escHtml(c.name)}">💰</button>
+        <button class="btn btn-sm" data-delete="${escHtml(c.name)}">✕</button>
+      </div>
+    `;
+  }).join('');
   container.querySelectorAll('[data-delete]').forEach((btn) => {
     btn.addEventListener('click', () => {
       Config.deleteClient(btn.dataset.delete);
       renderClientList();
       refreshClientDatalist();
     });
+  });
+  container.querySelectorAll('[data-tjm]').forEach((btn) => {
+    btn.addEventListener('click', () => openTjmModal(btn.dataset.tjm));
   });
 }
 
@@ -451,6 +461,91 @@ function onClientInput() {
   }
 }
 
+/* ---------- TJM modal ---------- */
+// Fallback role names matching the model's B6:L6 header row (cols 2–12).
+const FALLBACK_ROLE_NAMES = [
+  'Production Director', 'Project Director', 'Senior Project Manager',
+  'Project Manager', 'Data Analyst', 'Designer UX', 'Designer UI',
+  'CTO', 'Tech lead', 'SRE', 'Full Stack Developer',
+];
+const TJM_COL_COUNT = 11; // B through L
+
+let tjmClientTarget = null;
+let tjmRoleNames = [...FALLBACK_ROLE_NAMES];
+
+async function openTjmModal(clientName) {
+  tjmClientTarget = clientName;
+  $('tjmClientLabel').textContent = clientName;
+  // Show existing saved values immediately (or blanks).
+  const existing = Config.getClientTjm(clientName) || new Array(TJM_COL_COUNT).fill('');
+  renderTjmRows(existing, tjmRoleNames);
+  openModal('tjmModal');
+  // Then try to load real role names from the model sheet header row (B6:L6).
+  await refreshTjmRoleNames();
+}
+
+async function refreshTjmRoleNames() {
+  if (!Auth.isSignedIn() || !Config.get('spreadsheetId')) return;
+  try {
+    const res = await SheetsAPI.getValues(Config.get('spreadsheetId'), 'ModeleChiffrage!B6:L6');
+    const names = res.values?.[0] || [];
+    if (names.filter(Boolean).length > 0) {
+      tjmRoleNames = names;
+      // Re-render labels in place without resetting values.
+      const inputs = $('tjmRows').querySelectorAll('input[type=number]');
+      const labels = $('tjmRows').querySelectorAll('.tjm-role');
+      names.forEach((name, i) => {
+        if (labels[i] && name) labels[i].textContent = name;
+      });
+    }
+  } catch { /* keep fallback names */ }
+}
+
+function renderTjmRows(values, names) {
+  const container = $('tjmRows');
+  container.innerHTML = '';
+  for (let i = 0; i < TJM_COL_COUNT; i++) {
+    const row = document.createElement('div');
+    row.className = 'tjm-row';
+    row.innerHTML = `
+      <span class="tjm-role">${escHtml(names[i] || `Rôle ${i + 1}`)}</span>
+      <input type="number" min="0" step="10" value="${values[i] ?? ''}" placeholder="Modèle" data-idx="${i}" />
+      <span class="tjm-unit">€/j</span>
+    `;
+    container.appendChild(row);
+  }
+}
+
+async function loadTjmFromModel() {
+  const btn = $('btnLoadTjmModel');
+  busy(btn, true, '…');
+  try {
+    const res = await SheetsAPI.getValues(Config.get('spreadsheetId'), 'ModeleChiffrage!B7:L7');
+    const values = (res.values?.[0] || []).map((v) => {
+      const n = parseFloat(String(v).replace(',', '.'));
+      return Number.isFinite(n) ? n : '';
+    });
+    renderTjmRows(values, tjmRoleNames);
+    toast('Tarifs chargés depuis le modèle.', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    busy(btn, false);
+  }
+}
+
+function saveTjm() {
+  const inputs = $('tjmRows').querySelectorAll('input[type=number]');
+  const values = Array.from(inputs).map((inp) => {
+    const n = parseFloat(inp.value);
+    return Number.isFinite(n) ? n : null;
+  });
+  Config.setClientTjm(tjmClientTarget, values);
+  closeModal('tjmModal');
+  renderClientList(); // refresh badge count
+  toast(`TJM enregistrés pour « ${tjmClientTarget} ».`, 'success');
+}
+
 /* ---------- Wire up ---------- */
 function init() {
   $('btnSignIn').addEventListener('click', async () => {
@@ -469,6 +564,9 @@ function init() {
   $('btnSaveSettings').addEventListener('click', saveSettings);
   $('btnCloseSettings').addEventListener('click', () => closeModal('settingsModal'));
   $('btnAddClient').addEventListener('click', addClient);
+  $('btnLoadTjmModel').addEventListener('click', loadTjmFromModel);
+  $('btnSaveTjm').addEventListener('click', saveTjm);
+  $('btnCloseTjm').addEventListener('click', () => closeModal('tjmModal'));
 
   $('btnRefresh').addEventListener('click', loadDashboard);
   $('btnUpdateAll').addEventListener('click', updateAllMontants);
