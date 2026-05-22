@@ -288,6 +288,42 @@ input::placeholder { color: var(--muted); }
 }
 .btn-delete:hover { background: #2d1212; }
 
+/* Role checkboxes in new-chiffrage modal */
+.role-checkboxes {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+}
+.role-check-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .1s;
+}
+.role-check-row:hover { background: var(--hover); }
+.role-check-row input[type=checkbox] { width: auto; flex: 0 0 auto; accent-color: var(--primary); }
+.role-check-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.role-check-rate { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+/* Role modal rows */
+.role-modal-rows { display: flex; flex-direction: column; gap: 5px; }
+.role-modal-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  transition: opacity .15s;
+}
+.role-modal-row:last-child { border-bottom: none; }
+.role-modal-row input[type=checkbox] { width: auto; flex: 0 0 auto; accent-color: var(--primary); }
+.role-modal-row .rm-name { flex: 1; min-width: 0; font-size: 13px; }
+.role-modal-row .rm-rate { width: 80px; text-align: right; font-size: 13px; }
+.role-modal-row.role-disabled { opacity: .4; }
+.role-modal-row .rm-reset { padding: 4px 6px; font-size: 11px; color: var(--muted); }
+
 /* Scrollbar (dark) */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg); }

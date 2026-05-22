@@ -7,8 +7,36 @@ import { extractSpreadsheetId, extractFolderId } from './utils.js';
 
 const $ = (id) => document.getElementById(id);
 
-let chiffrages = []; // full list from Drive scan
-let selectedClient = ''; // '' = all clients
+let chiffrages = [];
+let selectedClient = '';
+
+/* ---- Roles ---- */
+const DEFAULT_ROLES = [
+  { name: 'Production Director',    rate: 920  },
+  { name: 'Project Director',       rate: 920  },
+  { name: 'Senior Project Manager', rate: 880  },
+  { name: 'Project Manager',        rate: 720  },
+  { name: 'Data Analyst',           rate: 880  },
+  { name: 'Designer UX',            rate: 720  },
+  { name: 'Designer UI',            rate: 720  },
+  { name: 'CTO',                    rate: 1400 },
+  { name: 'Tech lead',              rate: 1050 },
+  { name: 'SRE',                    rate: 1050 },
+  { name: 'Full Stack Developer',   rate: 880  },
+];
+
+// Merge saved client roles with defaults; always returns 11-item array.
+function getRolesForClient(clientName) {
+  const saved = clientName ? Config.getClientRoles(clientName) : null;
+  return DEFAULT_ROLES.map((def, i) => {
+    const s = saved?.[i];
+    return {
+      name:    s?.name    !== undefined ? s.name    : def.name,
+      rate:    s?.rate    !== undefined ? s.rate    : def.rate,
+      enabled: s?.enabled !== undefined ? s.enabled : true,
+    };
+  });
+}
 
 /* ---- UI helpers ---- */
 function toast(msg, type = '') {
@@ -52,10 +80,7 @@ function showApp(signedIn) {
 
 Auth.onChange((signedIn) => {
   showApp(signedIn);
-  if (signedIn) {
-    refreshClientSelector();
-    loadDashboard();
-  }
+  if (signedIn) { refreshClientSelector(); loadDashboard(); }
 });
 
 /* ---- Client selector ---- */
@@ -144,10 +169,7 @@ function renderTable() {
     const tdFile = document.createElement('td');
     if (ch.url) {
       const a = document.createElement('a');
-      a.href = ch.url;
-      a.target = '_blank';
-      a.rel = 'noopener';
-      a.textContent = 'Ouvrir';
+      a.href = ch.url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Ouvrir';
       tdFile.appendChild(a);
     } else {
       tdFile.textContent = '—';
@@ -159,7 +181,7 @@ function renderTable() {
     tdMontant.className = 'amount';
     tr.appendChild(tdMontant);
 
-    // Delete action
+    // Delete
     const tdDel = document.createElement('td');
     const btnDel = document.createElement('button');
     btnDel.className = 'btn btn-sm btn-delete';
@@ -270,6 +292,32 @@ function getPhases() {
   return phasesData.map((p, i) => ({ phase: i + 1, items: Math.max(1, p.items) }));
 }
 
+/* ---- Role picker (new chiffrage modal) ---- */
+function renderRoleCheckboxes(clientName) {
+  const container = $('roleCheckboxes');
+  const roles = getRolesForClient(clientName);
+  container.innerHTML = '';
+  roles.forEach((r, i) => {
+    const item = document.createElement('label');
+    item.className = 'role-check-row';
+    item.innerHTML = `
+      <input type="checkbox" ${r.enabled ? 'checked' : ''} data-role-idx="${i}" />
+      <span class="role-check-name">${escHtml(r.name)}</span>
+      <span class="role-check-rate">${r.rate} €/j</span>
+    `;
+    container.appendChild(item);
+  });
+}
+
+function getSelectedRoles(clientName) {
+  const base = getRolesForClient(clientName);
+  const checks = $('roleCheckboxes').querySelectorAll('input[type=checkbox]');
+  return base.map((r, i) => ({
+    ...r,
+    enabled: checks[i] ? checks[i].checked : r.enabled,
+  }));
+}
+
 /* ---- New chiffrage ---- */
 async function createChiffrage() {
   const btn = $('btnCreate');
@@ -295,14 +343,21 @@ async function createChiffrage() {
     return;
   }
   if (!targetFolderId && !Config.get('rootFolderId')) {
-    errEl.textContent = `Aucun dossier Drive configuré pour « ${client} » et le dossier racine est absent. Configurez un dossier pour ce client dans ⚙️ Configuration.`;
+    errEl.textContent = `Aucun dossier Drive configuré pour « ${client} ». Ajoutez ce client dans ⚙️ Configuration.`;
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  const roles = getSelectedRoles(client);
+  if (!roles.some((r) => r.enabled)) {
+    errEl.textContent = 'Activez au moins un rôle.';
     errEl.classList.remove('hidden');
     return;
   }
 
   busy(btn, true, 'Création…');
   try {
-    await nouveauChiffrage({ numDevis, client, projet, ticket, date, targetFolderId, phases: getPhases() });
+    await nouveauChiffrage({ numDevis, client, projet, ticket, date, targetFolderId, phases: getPhases(), roles });
     closeModal('newModal');
     toast('Chiffrage créé avec succès.', 'success');
     await loadDashboard();
@@ -336,8 +391,9 @@ function renderClientList() {
 }
 
 function renderClientRow(row, c, editing) {
-  const tjm = Config.getClientTjm(c.name);
-  const tjmCount = tjm ? tjm.filter((r) => r !== null && r !== undefined && r !== '').length : 0;
+  const roles = Config.getClientRoles(c.name);
+  const activeCount = roles ? roles.filter((r) => r.enabled !== false).length : DEFAULT_ROLES.length;
+  const hasCustom = Boolean(roles);
 
   if (editing) {
     row.innerHTML = `
@@ -358,21 +414,21 @@ function renderClientRow(row, c, editing) {
       toast(`Client « ${newName} » mis à jour.`, 'success');
       if (Auth.isSignedIn()) loadDashboard();
     });
-    row.querySelector('[data-cancel]').addEventListener('click', () => {
-      renderClientRow(row, c, false);
-    });
+    row.querySelector('[data-cancel]').addEventListener('click', () => renderClientRow(row, c, false));
   } else {
-    const badge = tjmCount ? `<span class="client-tjm-badge">${tjmCount} TJM</span>` : '';
+    const badge = hasCustom
+      ? `<span class="client-tjm-badge">${activeCount}/${DEFAULT_ROLES.length} rôles</span>`
+      : '';
     row.innerHTML = `
       <span class="client-name">${escHtml(c.name)}</span>
       <span class="client-folder" title="${escHtml(c.folderId)}">${escHtml(c.folderId)}</span>
       ${badge}
       <button class="btn btn-sm" data-edit title="Modifier">✏️</button>
-      <button class="btn btn-sm" data-tjm title="Configurer les TJM">💰</button>
+      <button class="btn btn-sm" data-roles title="Configurer les rôles et TJM">💰</button>
       <button class="btn btn-sm" data-delete title="Supprimer">✕</button>
     `;
     row.querySelector('[data-edit]').addEventListener('click', () => renderClientRow(row, c, true));
-    row.querySelector('[data-tjm]').addEventListener('click', () => openTjmModal(c.name));
+    row.querySelector('[data-roles]').addEventListener('click', () => openRolesModal(c.name));
     row.querySelector('[data-delete]').addEventListener('click', () => {
       Config.deleteClient(c.name);
       renderClientList();
@@ -422,90 +478,87 @@ function addClient() {
   if (Auth.isSignedIn()) loadDashboard();
 }
 
-/* ---- TJM modal ---- */
-const TJM_ROLE_NAMES = [
-  'Production Director', 'Project Director', 'Senior Project Manager',
-  'Project Manager', 'Data Analyst', 'Designer UX', 'Designer UI',
-  'CTO', 'Tech lead', 'SRE', 'Full Stack Developer',
-];
-const TJM_DEFAULTS = [920, 920, 880, 720, 880, 720, 720, 1400, 1050, 1050, 880];
-const TJM_COL_COUNT = TJM_ROLE_NAMES.length;
+/* ---- Roles modal (per-client) ---- */
+let rolesClientTarget = null;
 
-let tjmClientTarget = null;
-
-function openTjmModal(clientName) {
-  tjmClientTarget = clientName;
-  $('tjmClientLabel').textContent = clientName;
-  const saved = Config.getClientTjm(clientName);
-  renderTjmRows(saved || [...TJM_DEFAULTS]);
-  openModal('tjmModal');
+function openRolesModal(clientName) {
+  rolesClientTarget = clientName;
+  $('rolesClientLabel').textContent = clientName;
+  renderRoleModalRows(getRolesForClient(clientName));
+  openModal('rolesModal');
 }
 
-function renderTjmRows(values) {
-  const container = $('tjmRows');
+function renderRoleModalRows(roles) {
+  const container = $('roleModalRows');
   container.innerHTML = '';
-  for (let i = 0; i < TJM_COL_COUNT; i++) {
+  roles.forEach((r, i) => {
     const row = document.createElement('div');
-    row.className = 'tjm-row';
+    row.className = `role-modal-row${r.enabled ? '' : ' role-disabled'}`;
+    row.dataset.idx = i;
     row.innerHTML = `
-      <span class="tjm-role">${escHtml(TJM_ROLE_NAMES[i])}</span>
-      <input type="number" min="0" step="10" value="${values[i] ?? TJM_DEFAULTS[i]}" placeholder="${TJM_DEFAULTS[i]}" data-idx="${i}" />
+      <input type="checkbox" class="rm-enabled" ${r.enabled ? 'checked' : ''} title="Activer / désactiver ce rôle" />
+      <input type="text"   class="input-sm rm-name"    value="${escHtml(r.name)}"  placeholder="Nom du rôle" />
+      <input type="number" class="input-sm rm-rate"    value="${r.rate}"           placeholder="${DEFAULT_ROLES[i]?.rate ?? ''}" min="0" step="10" />
       <span class="tjm-unit">€/j</span>
+      <button type="button" class="btn btn-sm btn-ghost rm-reset" title="Réinitialiser aux valeurs par défaut">↩</button>
     `;
+    const cbx = row.querySelector('.rm-enabled');
+    cbx.addEventListener('change', () => row.classList.toggle('role-disabled', !cbx.checked));
+    row.querySelector('.rm-reset').addEventListener('click', () => {
+      const def = DEFAULT_ROLES[i];
+      if (def) {
+        row.querySelector('.rm-name').value = def.name;
+        row.querySelector('.rm-rate').value = def.rate;
+        cbx.checked = true;
+        row.classList.remove('role-disabled');
+      }
+    });
     container.appendChild(row);
-  }
-}
-
-function resetTjmToDefaults() {
-  renderTjmRows([...TJM_DEFAULTS]);
-}
-
-function saveTjm() {
-  const inputs = $('tjmRows').querySelectorAll('input[type=number]');
-  const values = Array.from(inputs).map((inp) => {
-    const n = parseFloat(inp.value);
-    return Number.isFinite(n) ? n : null;
   });
-  Config.setClientTjm(tjmClientTarget, values);
-  closeModal('tjmModal');
+}
+
+function saveRoles() {
+  const rows = $('roleModalRows').querySelectorAll('.role-modal-row');
+  const roles = Array.from(rows).map((row, i) => ({
+    name:    row.querySelector('.rm-name').value.trim() || DEFAULT_ROLES[i]?.name || '',
+    rate:    parseFloat(row.querySelector('.rm-rate').value) || 0,
+    enabled: row.querySelector('.rm-enabled').checked,
+  }));
+  Config.setClientRoles(rolesClientTarget, roles);
+  closeModal('rolesModal');
   renderClientList();
-  toast(`TJM enregistrés pour « ${tjmClientTarget} ».`, 'success');
+  toast(`Rôles enregistrés pour « ${rolesClientTarget} ».`, 'success');
+}
+
+function resetAllRoles() {
+  renderRoleModalRows(DEFAULT_ROLES.map((r) => ({ ...r, enabled: true })));
 }
 
 /* ---- Wire up ---- */
 function init() {
-  // Auth
   $('btnSignIn').addEventListener('click', async () => {
     if (!Config.get('clientId')) {
       openSettings();
       toast('Configurez votre OAuth Client ID d\'abord.', 'error');
       return;
     }
-    try {
-      await Auth.signIn();
-    } catch (e) {
-      toast(e.message, 'error');
-    }
+    try { await Auth.signIn(); } catch (e) { toast(e.message, 'error'); }
   });
   $('btnSignOut').addEventListener('click', () => Auth.signOut());
   $('openSettingsFromLogin').addEventListener('click', openSettings);
 
-  // Settings
   $('btnSettings').addEventListener('click', openSettings);
   $('btnSaveSettings').addEventListener('click', saveSettings);
   $('btnCloseSettings').addEventListener('click', () => closeModal('settingsModal'));
   $('btnAddClient').addEventListener('click', addClient);
 
-  // Client selector
   $('clientSelector').addEventListener('change', (e) => {
     selectedClient = e.target.value;
     renderTable();
   });
 
-  // Dashboard
   $('btnRefresh').addEventListener('click', loadDashboard);
 
-  // New chiffrage
   $('btnNew').addEventListener('click', () => {
     $('newError').classList.add('hidden');
     $('newNumDevis').value = '';
@@ -515,24 +568,27 @@ function init() {
     $('newDate').value = new Date().toISOString().split('T')[0];
     phasesData = [{ items: 1 }];
     renderPhaseRows();
+    renderRoleCheckboxes(selectedClient);
     openModal('newModal');
   });
   $('btnAddPhase').addEventListener('click', addPhase);
+  $('newClient').addEventListener('change', (e) => renderRoleCheckboxes(e.target.value.trim()));
+  $('newClient').addEventListener('input', (e) => {
+    const val = e.target.value.trim();
+    if (Config.getClients().some((c) => c.name.toLowerCase() === val.toLowerCase())) {
+      renderRoleCheckboxes(val);
+    }
+  });
   $('btnCreate').addEventListener('click', createChiffrage);
   $('btnCloseNew').addEventListener('click', () => closeModal('newModal'));
 
-  // TJM
-  $('btnResetTjm').addEventListener('click', resetTjmToDefaults);
-  $('btnSaveTjm').addEventListener('click', saveTjm);
-  $('btnCloseTjm').addEventListener('click', () => closeModal('tjmModal'));
+  $('btnSaveRoles').addEventListener('click', saveRoles);
+  $('btnResetRoles').addEventListener('click', resetAllRoles);
+  $('btnCloseRoles').addEventListener('click', () => closeModal('rolesModal'));
 
-  // Init state
   refreshClientDatalist();
   showApp(Auth.isSignedIn());
-  if (Auth.isSignedIn()) {
-    refreshClientSelector();
-    loadDashboard();
-  }
+  if (Auth.isSignedIn()) { refreshClientSelector(); loadDashboard(); }
 }
 
 init();

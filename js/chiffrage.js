@@ -290,21 +290,34 @@ export async function nouveauChiffrage(entry) {
     [client], [projet], [ticket || ''], [dateValue], [numDevis || ''],
   ]);
 
-  // Apply client-specific TJM rates to row 7 (B7:L7), overriding the model defaults.
-  const clientTjm = Config.getClientTjm(client);
-  if (Array.isArray(clientTjm)) {
-    const tjmUpdates = [];
-    clientTjm.forEach((rate, i) => {
-      if (rate !== null && rate !== undefined && rate !== '') {
-        tjmUpdates.push({ range: `Chiffrage!${colLetter(2 + i)}7`, values: [[rate]] });
-      }
+  // Apply role names (row 6) and TJM rates (row 7) from the roles config.
+  // Disabled roles get rate 0; their columns are hidden after phase generation.
+  if (Array.isArray(roles) && roles.length) {
+    const roleUpdates = [];
+    roles.forEach((r, i) => {
+      if (r.name) roleUpdates.push({ range: `Chiffrage!${colLetter(2 + i)}6`, values: [[r.name]] });
+      roleUpdates.push({ range: `Chiffrage!${colLetter(2 + i)}7`, values: [[r.enabled ? (r.rate ?? 0) : 0]] });
     });
-    if (tjmUpdates.length) await SheetsAPI.batchUpdateValues(newId, tjmUpdates);
+    if (roleUpdates.length) await SheetsAPI.batchUpdateValues(newId, roleUpdates);
   }
 
   // Generate phases / items / formulas.
   const lastCol = model.gridProperties?.columnCount || 15;
   await genererChiffrageSelonConfig(newId, copiedSheetId, lastCol, phase1Config.items, otherPhases);
+
+  // Hide columns for disabled roles (0-based: B=1, C=2, …, L=11).
+  if (Array.isArray(roles)) {
+    const hideRequests = roles
+      .map((r, i) => (!r.enabled ? {
+        updateDimensionProperties: {
+          range: { sheetId: copiedSheetId, dimension: 'COLUMNS', startIndex: i + 1, endIndex: i + 2 },
+          properties: { hiddenByUser: true },
+          fields: 'hiddenByUser',
+        },
+      } : null))
+      .filter(Boolean);
+    if (hideRequests.length) await SheetsAPI.batchUpdate(newId, hideRequests);
+  }
 
   return { id: newId, url: spreadsheetUrl(newId), idChiffrage };
 }

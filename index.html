@@ -132,7 +132,14 @@
       </div>
       <div id="phaseRows" class="phase-rows"></div>
 
-      <p class="hint" style="margin-top:8px">Un nouveau classeur sera créé à partir du modèle configuré, avec les phases ci-dessus. Le fichier sera placé dans le dossier Drive du client.</p>
+      <hr class="divider" />
+      <div class="phase-header">
+        <h3 class="section-title">👥 Rôles inclus</h3>
+        <span style="font-size:12px;color:var(--muted)">Décochez les rôles absents du projet</span>
+      </div>
+      <div id="roleCheckboxes" class="role-checkboxes"></div>
+
+      <p class="hint" style="margin-top:8px">Un nouveau classeur sera créé à partir du modèle configuré. Les rôles décochés seront masqués dans la feuille générée.</p>
       <div id="newError" class="banner banner-error hidden"></div>
       <div class="modal-actions">
         <button id="btnCreate" class="btn btn-primary">Créer</button>
@@ -141,17 +148,21 @@
     </div>
   </div>
 
-  <!-- TJM per-client modal -->
-  <div id="tjmModal" class="modal hidden">
+  <!-- Roles per-client modal -->
+  <div id="rolesModal" class="modal hidden">
     <div class="modal-card modal-card--tall">
-      <h2>💰 TJM — <span id="tjmClientLabel"></span></h2>
-      <p class="hint" style="margin:0 0 12px">Les tarifs configurés ici remplaceront la ligne TJM du modèle (B7:L7) lors de la création d'un chiffrage pour ce client. Laissez un champ vide pour garder la valeur du modèle.</p>
-      <div id="tjmRows" class="tjm-rows"></div>
-      <div class="modal-actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <button id="btnResetTjm" class="btn">↩ Valeurs par défaut</button>
+      <h2>👥 Rôles — <span id="rolesClientLabel"></span></h2>
+      <p class="hint" style="margin:0 0 12px">
+        Activez/désactivez les rôles, renommez-les ou ajustez les TJM pour ce client.
+        Les rôles désactivés seront masqués dans tous les nouveaux chiffrages pour ce client.
+        Le bouton ↩ par ligne restaure les valeurs par défaut de ce rôle uniquement.
+      </p>
+      <div id="roleModalRows" class="role-modal-rows"></div>
+      <div class="modal-actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:16px">
+        <button id="btnResetRoles" class="btn">↩ Tout réinitialiser</button>
         <div style="display:flex;gap:8px">
-          <button id="btnSaveTjm" class="btn btn-primary">Enregistrer</button>
-          <button id="btnCloseTjm" class="btn btn-ghost">Fermer</button>
+          <button id="btnSaveRoles" class="btn btn-primary">Enregistrer</button>
+          <button id="btnCloseRoles" class="btn btn-ghost">Fermer</button>
         </div>
       </div>
     </div>

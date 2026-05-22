@@ -50,19 +50,19 @@ export const Config = {
     return entry?.folderId || null;
   },
 
-  // tjm: array of rates aligned to B7:L7 (11 values). null/undefined entries = keep model default.
-  getClientTjm(clientName) {
+  // roles: [{name, rate, enabled}] aligned to columns B-L (11 items).
+  getClientRoles(clientName) {
     if (!clientName) return null;
     const key = clientName.trim().toLowerCase();
     const entry = this.getClients().find((c) => c.name.trim().toLowerCase() === key);
-    return entry?.tjm || null;
+    return entry?.roles || null;
   },
 
-  setClientTjm(name, tjm) {
+  setClientRoles(clientName, roles) {
     const clients = this.getClients();
-    const idx = clients.findIndex((c) => c.name.trim().toLowerCase() === name.trim().toLowerCase());
+    const idx = clients.findIndex((c) => c.name.trim().toLowerCase() === clientName.trim().toLowerCase());
     if (idx >= 0) {
-      clients[idx] = { ...clients[idx], tjm };
+      clients[idx] = { ...clients[idx], roles };
       this.saveClients(clients);
     }
   },
