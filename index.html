@@ -42,6 +42,12 @@
   <main id="appPage" class="container hidden">
     <div id="globalError" class="banner banner-error hidden"></div>
 
+    <nav class="app-nav">
+      <button id="navDashboard" class="nav-tab active" data-view="dashboard">📋 Tableau de bord</button>
+      <button id="navStats" class="nav-tab" data-view="stats">📊 Statistiques</button>
+    </nav>
+
+    <section id="dashboardView" class="view">
     <section class="panel">
       <div class="panel-head">
         <div class="panel-head-left">
@@ -67,9 +73,6 @@
         <span id="loadingProgressText" class="loading-progress-text">Scan…</span>
       </div>
 
-      <!-- Summary bar — counts + montants per status for the visible rows -->
-      <div id="summaryBar" class="summary-bar hidden"></div>
-
       <div class="table-wrap">
         <table id="chiffrageTable" class="data-table">
           <thead>
@@ -91,6 +94,31 @@
           </tbody>
         </table>
       </div>
+    </section>
+    </section>
+
+    <section id="statsView" class="view hidden">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-head-left">
+            <h2>Statistiques</h2>
+            <select id="statsClientSelector" class="input client-selector-input"></select>
+          </div>
+        </div>
+        <div class="stats-grid">
+          <div class="stats-card">
+            <h3 class="stats-card-title">Répartition par statut</h3>
+            <div class="stats-donut-wrap">
+              <div id="statsDonut" class="stats-donut"></div>
+              <div id="statsLegend" class="stats-legend"></div>
+            </div>
+          </div>
+          <div class="stats-card">
+            <h3 class="stats-card-title">Tunnel de conversion</h3>
+            <div id="statsFunnel" class="stats-funnel"></div>
+          </div>
+        </div>
+      </section>
     </section>
   </main>
 

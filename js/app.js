@@ -151,6 +151,7 @@ function refreshClientSelector() {
   } else {
     selectedClient = '';
   }
+  refreshStatsClientSelector();
 }
 
 function refreshClientDatalist() {
@@ -219,6 +220,7 @@ async function loadDashboard() {
     storeDashboard(chiffrages);
     renderFilters();
     renderTable();
+    if (currentView === 'stats') renderStats();
   } catch (e) {
     dashboardLoading = false;
     showGlobalError(e.message);
@@ -263,65 +265,202 @@ function renderFilters() {
   });
 }
 
-/* ---- Summary bar ---- */
+/* ---- Stats page ---- */
 const STATUS_DISPLAY_LABELS = {
   '': 'Non envoyé', 'Envoyé': 'Envoyé', 'Validé': 'Validé',
   'Passé en TMA': 'Passé en TMA', 'Refusé': 'Refusé', 'Annulé': 'Annulé',
 };
 
-function renderSummary() {
-  const bar = $('summaryBar');
-  const visible = visibleChiffrages();
-  if (!visible.length) { bar.classList.add('hidden'); return; }
+// Brighter palette than STATUS_STYLES (which is tuned for dark chip backgrounds).
+const STATUS_CHART_COLORS = {
+  '': '#64748b', 'Envoyé': '#f59e0b', 'Validé': '#10b981',
+  'Passé en TMA': '#3b82f6', 'Refusé': '#ef4444', 'Annulé': '#6b7280',
+};
+
+let currentView = 'dashboard';
+let statsClient = ''; // '' = all clients
+
+function showView(view) {
+  currentView = view;
+  $('dashboardView').classList.toggle('hidden', view !== 'dashboard');
+  $('statsView').classList.toggle('hidden', view !== 'stats');
+  $('navDashboard').classList.toggle('active', view === 'dashboard');
+  $('navStats').classList.toggle('active', view === 'stats');
+  if (view === 'stats') renderStats();
+}
+
+function refreshStatsClientSelector() {
+  const sel = $('statsClientSelector');
+  if (!sel) return;
+  const prev = statsClient;
+  sel.innerHTML = '';
+  const all = document.createElement('option');
+  all.value = ''; all.textContent = 'Tous les clients';
+  sel.appendChild(all);
+  for (const c of Config.getClients()) {
+    const opt = document.createElement('option');
+    opt.value = c.name; opt.textContent = c.name;
+    sel.appendChild(opt);
+  }
+  sel.value = [...sel.options].some((o) => o.value === prev) ? prev : '';
+  statsClient = sel.value;
+}
+
+function statsScope() {
+  if (!statsClient) return chiffrages;
+  const key = statsClient.trim().toLowerCase();
+  return chiffrages.filter((c) => (c.client || '').trim().toLowerCase() === key);
+}
+
+// SVG donut from [{value, color}] segments.
+function buildDonut(segments, size = 160, thickness = 26) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const total = segments.reduce((s, x) => s + x.value, 0);
+  const r = (size - thickness) / 2;
+  const cx = size / 2; const cy = size / 2;
+  const circ = 2 * Math.PI * r;
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+
+  const ring = (color, dash, offset) => {
+    const c = document.createElementNS(ns, 'circle');
+    c.setAttribute('cx', String(cx)); c.setAttribute('cy', String(cy)); c.setAttribute('r', String(r));
+    c.setAttribute('fill', 'none');
+    c.setAttribute('stroke', color);
+    c.setAttribute('stroke-width', String(thickness));
+    if (dash != null) { c.setAttribute('stroke-dasharray', dash); c.setAttribute('stroke-dashoffset', String(offset)); }
+    c.setAttribute('transform', `rotate(-90 ${cx} ${cy})`);
+    return c;
+  };
+
+  if (total === 0) { svg.appendChild(ring('#252c3a')); return svg; }
+  let offset = 0;
+  for (const seg of segments) {
+    if (seg.value <= 0) continue;
+    const len = (seg.value / total) * circ;
+    svg.appendChild(ring(seg.color, `${len} ${circ - len}`, -offset));
+    offset += len;
+  }
+  return svg;
+}
+
+function renderStats() {
+  const scope = statsScope();
+  renderStatusBreakdown(scope);
+  renderFunnel(scope);
+}
+
+function renderStatusBreakdown(scope) {
+  const donutEl = $('statsDonut');
+  const legendEl = $('statsLegend');
+  donutEl.innerHTML = '';
+  legendEl.innerHTML = '';
 
   const groups = {};
-  let grandCount = 0; let grandMontant = 0;
-  for (const ch of visible) {
+  for (const ch of scope) {
     const s = ch.status || '';
     if (!groups[s]) groups[s] = { count: 0, montant: 0 };
     groups[s].count++;
-    const m = typeof ch.montant === 'number' ? ch.montant : 0;
-    groups[s].montant += m;
-    grandCount++;
-    grandMontant += m;
+    groups[s].montant += typeof ch.montant === 'number' ? ch.montant : 0;
   }
 
-  bar.innerHTML = '';
-  bar.classList.remove('hidden');
+  const segments = STATUS_OPTIONS
+    .filter((s) => groups[s])
+    .map((s) => ({ value: groups[s].count, color: STATUS_CHART_COLORS[s] ?? '#64748b', status: s }));
 
-  const makeChip = (label, count, montant, style) => {
-    const chip = document.createElement('div');
-    chip.className = 'summary-chip';
-    if (style) { chip.style.background = style.bg; chip.style.color = style.color; }
-    const lbl = document.createElement('span');
-    lbl.className = 'summary-chip-label';
-    lbl.textContent = label;
-    chip.appendChild(lbl);
-    const cnt = document.createElement('span');
-    cnt.className = 'summary-chip-count';
-    cnt.textContent = count;
-    chip.appendChild(cnt);
-    if (montant > 0) {
-      const sep = document.createElement('span');
-      sep.className = 'summary-chip-sep';
-      sep.textContent = '·';
-      chip.appendChild(sep);
-      const amt = document.createElement('span');
-      amt.className = 'summary-chip-amount';
-      amt.textContent = formatMontant(montant);
-      chip.appendChild(amt);
-    }
-    return chip;
-  };
+  const total = scope.length;
+
+  // Donut + center total
+  const wrap = document.createElement('div');
+  wrap.style.position = 'relative';
+  wrap.appendChild(buildDonut(segments));
+  const center = document.createElement('div');
+  center.className = 'stats-donut-center';
+  center.innerHTML = `<span class="stats-donut-center-count">${total}</span><span class="stats-donut-center-label">chiffrage${total > 1 ? 's' : ''}</span>`;
+  wrap.appendChild(center);
+  donutEl.appendChild(wrap);
+
+  if (!total) {
+    legendEl.innerHTML = '<div class="stats-empty">Aucune donnée.</div>';
+    return;
+  }
 
   for (const s of STATUS_OPTIONS) {
     const g = groups[s];
     if (!g) continue;
-    bar.appendChild(makeChip(STATUS_DISPLAY_LABELS[s] ?? s, g.count, g.montant, STATUS_STYLES[s]));
+    const row = document.createElement('div');
+    row.className = 'stats-legend-row';
+    const dot = document.createElement('span');
+    dot.className = 'stats-legend-dot';
+    dot.style.background = STATUS_CHART_COLORS[s] ?? '#64748b';
+    const label = document.createElement('span');
+    label.className = 'stats-legend-label';
+    label.textContent = STATUS_DISPLAY_LABELS[s] ?? s;
+    const vals = document.createElement('span');
+    vals.className = 'stats-legend-vals';
+    const pct = Math.round((g.count / total) * 100);
+    vals.innerHTML = `<b>${g.count}</b> · ${pct}%${g.montant > 0 ? ` · ${escHtml(formatMontant(g.montant))}` : ''}`;
+    row.append(dot, label, vals);
+    legendEl.appendChild(row);
   }
-  const totalChip = makeChip('Total', grandCount, grandMontant, null);
-  totalChip.classList.add('summary-chip--total');
-  bar.appendChild(totalChip);
+}
+
+function renderFunnel(scope) {
+  const el = $('statsFunnel');
+  el.innerHTML = '';
+  if (!scope.length) { el.innerHTML = '<div class="stats-empty">Aucune donnée.</div>'; return; }
+
+  const sum = (pred) => scope.reduce((acc, c) => {
+    if (!pred(c.status || '')) return acc;
+    return { count: acc.count + 1, montant: acc.montant + (typeof c.montant === 'number' ? c.montant : 0) };
+  }, { count: 0, montant: 0 });
+
+  const SENT = new Set(['Envoyé', 'Validé', 'Passé en TMA', 'Refusé']);
+  const WON = new Set(['Validé', 'Passé en TMA']);
+
+  const stages = [
+    { label: 'Créés', color: '#64748b', ...sum(() => true) },
+    { label: 'Envoyés', color: '#f59e0b', ...sum((s) => SENT.has(s)) },
+    { label: 'Validés', color: '#10b981', ...sum((s) => WON.has(s)) },
+  ];
+
+  const top = stages[0].count || 1;
+  stages.forEach((st, i) => {
+    const stage = document.createElement('div');
+    stage.className = 'funnel-stage';
+
+    const head = document.createElement('div');
+    head.className = 'funnel-stage-head';
+    const lbl = document.createElement('span');
+    lbl.className = 'funnel-stage-label';
+    lbl.textContent = st.label;
+    const vals = document.createElement('span');
+    vals.className = 'funnel-stage-vals';
+    vals.innerHTML = `<b>${st.count}</b>${st.montant > 0 ? ` · ${escHtml(formatMontant(st.montant))}` : ''}`;
+    head.append(lbl, vals);
+
+    const track = document.createElement('div');
+    track.className = 'funnel-bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'funnel-bar-fill';
+    fill.style.width = `${Math.max(2, Math.round((st.count / top) * 100))}%`;
+    fill.style.background = st.color;
+    track.appendChild(fill);
+
+    stage.append(head, track);
+
+    if (i > 0) {
+      const prev = stages[i - 1].count;
+      const rate = prev > 0 ? Math.round((st.count / prev) * 100) : 0;
+      const r = document.createElement('div');
+      r.className = 'funnel-rate';
+      r.textContent = `↳ ${rate}% depuis « ${stages[i - 1].label} »`;
+      stage.appendChild(r);
+    }
+    el.appendChild(stage);
+  });
 }
 
 /* ---- Sort ---- */
@@ -379,7 +518,6 @@ function visibleChiffrages() {
 
 /* ---- Table rendering ---- */
 function renderTable() {
-  renderSummary();
   updateSortHeaders();
   const body = $('chiffrageBody');
   body.innerHTML = '';
@@ -1128,6 +1266,14 @@ function init() {
   $('clientSelector').addEventListener('change', (e) => {
     selectedClient = e.target.value;
     renderTable();
+  });
+
+  // Navigation between dashboard and stats views.
+  $('navDashboard').addEventListener('click', () => showView('dashboard'));
+  $('navStats').addEventListener('click', () => showView('stats'));
+  $('statsClientSelector').addEventListener('change', (e) => {
+    statsClient = e.target.value;
+    renderStats();
   });
 
   document.querySelector('#chiffrageTable thead').addEventListener('click', (e) => {
