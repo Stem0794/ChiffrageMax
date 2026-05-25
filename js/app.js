@@ -757,6 +757,19 @@ function renderTlPhaseRows(phases) {
       }
     });
   });
+  // Paste normalisation: accept dd/mm/yyyy, mm/dd/yyyy or yyyy-mm-dd pasted
+  // from any source (including another date field in this modal).
+  c.querySelectorAll('.tl-date-input').forEach((input) => {
+    input.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text').trim();
+      const iso = toDateInputValue(text);
+      if (iso) {
+        input.value = iso;
+        input.dispatchEvent(new Event('change')); // triggers auto-fill if needed
+      }
+    });
+  });
 }
 
 function saveTimelineEntry() {
