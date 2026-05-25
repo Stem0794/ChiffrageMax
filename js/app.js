@@ -157,21 +157,47 @@ function refreshClientDatalist() {
 }
 
 /* ---- Dashboard ---- */
+function showProgress(loaded, total) {
+  const bar = $('loadingProgress');
+  const fill = $('loadingProgressFill');
+  const text = $('loadingProgressText');
+  bar.classList.remove('hidden');
+  if (total === 0) {
+    fill.style.width = '0%';
+    text.textContent = 'Scan…';
+  } else {
+    const pct = Math.min(100, Math.round((loaded / total) * 100));
+    fill.style.width = `${pct}%`;
+    text.textContent = `${loaded} / ${total}`;
+  }
+}
+
+function hideProgress() {
+  $('loadingProgress').classList.add('hidden');
+  $('loadingProgressFill').style.width = '0%';
+}
+
 async function loadDashboard() {
   if (!Auth.isSignedIn()) return;
   showGlobalError('');
   dashboardLoading = true;
   chiffrages = [];
   renderTable();
+  showProgress(0, 0);
   busy($('btnRefresh'), true, 'Chargement…');
   try {
-    await listChiffrages((batch, clientLabel) => {
-      for (const ch of batch) {
-        if (!chiffrages.some((c) => c.id === ch.id)) chiffrages.push(ch);
-      }
-      busy($('btnRefresh'), true, `${clientLabel} — ${chiffrages.length} chargé${chiffrages.length > 1 ? 's' : ''}`);
-      renderTable();
-    });
+    await listChiffrages(
+      (batch, clientLabel) => {
+        for (const ch of batch) {
+          if (!chiffrages.some((c) => c.id === ch.id)) chiffrages.push(ch);
+        }
+        busy($('btnRefresh'), true, `${clientLabel} — ${chiffrages.length} chargé${chiffrages.length > 1 ? 's' : ''}`);
+        renderTable();
+      },
+      {
+        onProgress: (loaded, total) => showProgress(loaded, total),
+      },
+    );
     dashboardLoading = false;
     renderFilters();
     renderTable();
@@ -181,6 +207,7 @@ async function loadDashboard() {
     renderTable();
   } finally {
     busy($('btnRefresh'), false);
+    hideProgress();
   }
 }
 

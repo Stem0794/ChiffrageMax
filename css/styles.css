@@ -94,6 +94,37 @@ a:visited { color: #a18aff; }
 }
 .status-pill:hover { border-color: var(--primary); color: var(--ink); }
 
+/* ---- Loading progress bar ---- */
+.loading-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-alt);
+}
+.loading-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.loading-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: width .25s ease;
+  width: 0%;
+}
+.loading-progress-text {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  min-width: 72px;
+  text-align: right;
+}
+
 /* Sortable column headers */
 .th-sortable { cursor: pointer; user-select: none; }
 .th-sortable:hover { color: var(--ink); }

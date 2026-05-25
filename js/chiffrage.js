@@ -428,8 +428,10 @@ function parseAmount(val) {
 
 // List all chiffrages, loading one client folder at a time to avoid Sheets API
 // rate limits (429). onBatch(chiffrages, clientName) is called after each
-// client finishes, enabling progressive UI updates.
-export async function listChiffrages(onBatch) {
+// client finishes. onProgress(loaded, total) is called after each folder scan
+// (total grows) and after each file read (loaded grows), enabling a live
+// progress bar even before the total is known.
+export async function listChiffrages(onBatch, { onProgress } = {}) {
   const clients = Config.getClients().filter((c) => c.folderId);
   const rootId = Config.get('rootFolderId');
   const clientFolderIds = new Set(clients.map((c) => c.folderId));
@@ -438,12 +440,18 @@ export async function listChiffrages(onBatch) {
 
   const CONCURRENCY = 4; // parallel reads per client — fast but under the read quota
 
+  let totalKnown = 0;
+  let totalLoaded = 0;
+
   const processFolder = async (folderId, label) => {
     const files = (await collectChiffrageFiles([folderId])).filter((f) => {
       if (seenIds.has(f.id)) return false;
       seenIds.add(f.id);
       return true;
     });
+    totalKnown += files.length;
+    onProgress?.(totalLoaded, totalKnown);
+
     const batch = [];
     let idx = 0;
     const worker = async () => {
@@ -456,9 +464,11 @@ export async function listChiffrages(onBatch) {
         } catch (e) {
           console.warn(`Impossible de lire ${file.name} :`, e.message);
         }
+        totalLoaded++;
+        onProgress?.(totalLoaded, totalKnown);
       }
     };
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, files.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, files.length || 1) }, worker));
     if (batch.length) onBatch?.(batch, label);
   };
 
