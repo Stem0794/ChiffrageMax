@@ -9,9 +9,9 @@ const CLIENTS_KEY = 'chiffragemax.clients';
 // Users can override either value in ⚙️ Configuration; their entry wins.
 const BAKED = {
   clientId: '557845598051-fkvj620tspj1oalgd9j7sa8avadqli00.apps.googleusercontent.com',
-  // Paste your ModeleChiffrage Sheet ID (or full URL) here to ship it as the
-  // default template, e.g. '1AbC...xyz'. Leave empty to require manual entry.
-  templateId: '',
+  // ModeleChiffrage Sheet ID shipped as the default template. Leave empty to
+  // require manual entry. Share this Sheet read-only with colleagues' accounts.
+  templateId: '1e29v5tsazqf3Yg_NyyXjRVLacZSUX4m8bj_Vh6z9FBU',
 };
 
 const DEFAULTS = {
