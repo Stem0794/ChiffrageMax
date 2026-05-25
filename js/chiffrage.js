@@ -324,7 +324,49 @@ export async function nouveauChiffrage(entry) {
 
 /* ---------- Dashboard: scan Drive folders for chiffrage files ---------- */
 
+/* ---- File data cache -------------------------------------------------------
+ * Parsed chiffrage data is stored in localStorage keyed by fileId+modifiedTime.
+ * If a file hasn't changed since the last scan, readChiffrageFile returns the
+ * cached result with zero Sheets API calls.
+ * -------------------------------------------------------------------------*/
+const CACHE_KEY = 'chiffragemax.filecache';
+let _fileCache = null;
+
+function _loadCache() {
+  if (_fileCache !== null) return _fileCache;
+  try { _fileCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); }
+  catch { _fileCache = {}; }
+  return _fileCache;
+}
+
+function _getCached(fileId, modifiedTime) {
+  const e = _loadCache()[fileId];
+  return e?.mt === modifiedTime ? e.d : null;
+}
+
+function _setCached(fileId, modifiedTime, data) {
+  const cache = _loadCache();
+  cache[fileId] = { mt: modifiedTime, d: data };
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); } catch {
+    // Storage quota exceeded — keep only this entry and retry.
+    _fileCache = { [fileId]: { mt: modifiedTime, d: data } };
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(_fileCache)); } catch {}
+  }
+}
+
+function _pruneCache(seenIds) {
+  const cache = _loadCache();
+  let dirty = false;
+  for (const k of Object.keys(cache)) {
+    if (!seenIds.has(k)) { delete cache[k]; dirty = true; }
+  }
+  if (!dirty) return;
+  _fileCache = cache;
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); } catch {}
+}
+
 // Recursively collect CHI-* spreadsheet files under the given folders.
+// Files whose name contains [ARCH] are skipped entirely (no Sheets API call).
 async function collectChiffrageFiles(folderIds) {
   const found = [];
   const seen = new Set();
@@ -339,6 +381,7 @@ async function collectChiffrageFiles(folderIds) {
       } else if (
         f.mimeType === 'application/vnd.google-apps.spreadsheet'
         && f.name.startsWith('CHI-')
+        && !f.name.includes('[ARCH]')
       ) {
         found.push(f);
       }
@@ -350,9 +393,14 @@ async function collectChiffrageFiles(folderIds) {
 }
 
 // Read one chiffrage file: header (C1:C5), validation status, total.
-// Single API call (getGrid) returns titles + values for every sheet, so we
-// pick the 'Chiffrage' tab (or the first one) without a separate metadata call.
+// Returns cached data immediately if the file's modifiedTime hasn't changed
+// (zero Sheets API calls). Otherwise makes one getGrid call and caches result.
 export async function readChiffrageFile(file) {
+  if (file.modifiedTime) {
+    const hit = _getCached(file.id, file.modifiedTime);
+    if (hit) return { ...hit, id: file.id, name: file.name, url: file.webViewLink || spreadsheetUrl(file.id) };
+  }
+
   const meta = await SheetsAPI.getGrid(file.id);
   const sheets = meta.sheets || [];
   const sheet = sheets.find((s) => s.properties?.title === 'Chiffrage') || sheets[0];
@@ -370,7 +418,7 @@ export async function readChiffrageFile(file) {
     status = cell(labelIdx + 1, 0);
   }
 
-  return {
+  const ch = {
     id: file.id,
     name: file.name,
     url: file.webViewLink || spreadsheetUrl(file.id),
@@ -384,6 +432,9 @@ export async function readChiffrageFile(file) {
     statusRow,
     montant: extractMontant(data),
   };
+
+  if (file.modifiedTime) _setCached(file.id, file.modifiedTime, ch);
+  return ch;
 }
 
 // Re-read just the live total amount for one chiffrage (single API call).
@@ -500,6 +551,7 @@ export async function listChiffrages(onBatch, { onProgress } = {}) {
     await processFolder(rootId, 'Racine');
   }
 
+  _pruneCache(seenIds);
   return allResults;
 }
 

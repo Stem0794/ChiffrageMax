@@ -145,7 +145,7 @@ export const DriveAPI = {
     do {
       const params = new URLSearchParams({
         q,
-        fields: 'nextPageToken,files(id,name,mimeType,webViewLink)',
+        fields: 'nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime)',
         pageSize: '1000',
         supportsAllDrives: 'true',
         includeItemsFromAllDrives: 'true',
