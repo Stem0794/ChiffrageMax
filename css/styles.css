@@ -123,7 +123,8 @@ a:visited { color: #a18aff; }
   color: var(--ink) !important;
   border: 1px solid var(--border);
 }
-.actions-cell { display: flex; gap: 4px; align-items: center; }
+.actions-cell { white-space: nowrap; }
+.actions-cell .btn + .btn { margin-left: 3px; }
 
 /* ---- Loading progress bar ---- */
 .loading-progress {
