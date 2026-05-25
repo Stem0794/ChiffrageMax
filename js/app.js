@@ -730,14 +730,31 @@ function renderTlPhaseRows(phases) {
     const row = document.createElement('div');
     row.className = 'tl-phase-row';
     row.dataset.key = p.key;
+    // Inputs are NOT inside <label> elements so the global "label input { width:100% }"
+    // rule doesn't interfere with the flex layout.
     row.innerHTML = `
       <span class="tl-phase-swatch" style="background:${p.bg}"></span>
       <span class="tl-phase-name">${escHtml(p.label)}</span>
-      <label class="tl-phase-field">Début<input type="date" class="tl-start" value="${escHtml(v.start || '')}" /></label>
-      <label class="tl-phase-field">Fin<input type="date" class="tl-end" value="${escHtml(v.end || '')}" /></label>
+      <div class="tl-phase-dates">
+        <span class="tl-date-lbl">Début</span>
+        <input type="date" class="tl-start tl-date-input" value="${escHtml(v.start || '')}" />
+        <span class="tl-date-arrow">→</span>
+        <span class="tl-date-lbl">Fin</span>
+        <input type="date" class="tl-end tl-date-input" value="${escHtml(v.end || '')}" />
+      </div>
     `;
     c.appendChild(row);
   }
+  // Auto-fill: when an end date is set, suggest it as the start of the next phase.
+  const rows = c.querySelectorAll('.tl-phase-row');
+  rows.forEach((row, idx) => {
+    row.querySelector('.tl-end').addEventListener('change', (e) => {
+      if (idx + 1 < rows.length) {
+        const nextStart = rows[idx + 1].querySelector('.tl-start');
+        if (!nextStart.value) nextStart.value = e.target.value;
+      }
+    });
+  });
 }
 
 function saveTimelineEntry() {

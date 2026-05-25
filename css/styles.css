@@ -650,23 +650,18 @@ label input, label select, .input-full {
 .btn.in-timeline { background: #14331f; border-color: #1f7a45; }
 
 /* Timeline edit modal */
-.tl-phase-rows { display: flex; flex-direction: column; gap: 8px; }
+.tl-phase-rows { display: flex; flex-direction: column; gap: 6px; }
 .tl-phase-row {
-  display: grid;
-  grid-template-columns: 18px 130px 1fr 1fr;
-  align-items: center;
-  gap: 8px 12px;
-  padding: 10px 14px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px;
   background: var(--panel-alt); border: 1px solid var(--border); border-radius: var(--radius);
 }
-.tl-phase-swatch { width: 14px; height: 14px; border-radius: 4px; }
-.tl-phase-name { font-size: 13px; font-weight: 600; }
-.tl-phase-row .tl-phase-field {
-  display: flex; flex-direction: column; gap: 4px;
-  margin-bottom: 0;
-  font-size: 12px; color: var(--muted);
-}
-.tl-phase-row .tl-phase-field input { margin-top: 0; width: 100%; display: block; }
+.tl-phase-swatch { width: 13px; height: 13px; border-radius: 3px; flex: 0 0 auto; }
+.tl-phase-name { font-size: 13px; font-weight: 600; min-width: 120px; flex: 0 0 auto; }
+.tl-phase-dates { display: flex; align-items: center; gap: 8px; flex: 1; }
+.tl-date-lbl { font-size: 11px; color: var(--muted); white-space: nowrap; flex: 0 0 auto; }
+.tl-date-arrow { font-size: 12px; color: var(--border); flex: 0 0 auto; }
+.tl-date-input { flex: 1; min-width: 0; padding: 6px 8px; font-size: 13px; margin: 0; }
 
 /* ---- Scrollbar ---- */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
