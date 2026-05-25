@@ -64,7 +64,9 @@ function busy(button, isBusy, label) {
   if (!button) return;
   if (isBusy) {
     button.dataset.label = button.innerHTML;
-    button.innerHTML = `<span class="spinner"></span> ${label || ''}`.trim();
+    // Build safely — label may contain user-controlled text (client names)
+    button.innerHTML = '<span class="spinner"></span>';
+    if (label) button.appendChild(document.createTextNode(` ${label}`));
     button.disabled = true;
   } else {
     button.innerHTML = button.dataset.label || button.innerHTML;
@@ -333,11 +335,11 @@ function renderTable() {
     tdStatus.appendChild(select);
     tr.appendChild(tdStatus);
 
-    // File link
+    // File link — only render for safe http(s) URLs
     const tdFile = document.createElement('td');
-    if (ch.url) {
+    if (ch.url && /^https?:\/\//i.test(ch.url)) {
       const a = document.createElement('a');
-      a.href = ch.url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Ouvrir';
+      a.href = ch.url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = 'Ouvrir';
       tdFile.appendChild(a);
     } else {
       tdFile.textContent = '—';
@@ -403,12 +405,17 @@ async function refreshVisibleMontants() {
   refreshingMontants = true;
   try {
     let changed = false;
-    for (const ch of visible) {
-      try {
-        const m = await readChiffrageMontant(ch.id, ch.sheetName);
-        if (m !== ch.montant) { ch.montant = m; changed = true; }
-      } catch { /* skip individual failures */ }
-    }
+    let idx = 0;
+    const worker = async () => {
+      while (idx < visible.length) {
+        const ch = visible[idx++];
+        try {
+          const m = await readChiffrageMontant(ch.id, ch.sheetName);
+          if (m !== ch.montant) { ch.montant = m; changed = true; }
+        } catch { /* skip individual failures */ }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, visible.length) }, worker));
     if (changed) renderTable();
   } finally {
     refreshingMontants = false;

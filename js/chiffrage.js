@@ -349,13 +349,19 @@ async function collectChiffrageFiles(folderIds) {
   return found;
 }
 
-// Read one chiffrage file in a single pass: header (C1:C5), validation status, total.
+// Read one chiffrage file: header (C1:C5), validation status, total.
+// Fast path is a single getValues on the standard 'Chiffrage' sheet; only if
+// that sheet is missing do we spend a second call discovering the real name.
 export async function readChiffrageFile(file) {
-  const meta = await SheetsAPI.get(file.id, { fields: 'sheets(properties(title))' });
-  const titles = (meta.sheets || []).map((s) => s.properties.title);
-  const sheetName = titles.includes('Chiffrage') ? 'Chiffrage' : (titles[0] || 'Chiffrage');
-
-  const res = await SheetsAPI.getValues(file.id, `'${sheetName.replace(/'/g, "''")}'`);
+  let sheetName = 'Chiffrage';
+  let res;
+  try {
+    res = await SheetsAPI.getValues(file.id, "'Chiffrage'");
+  } catch {
+    const meta = await SheetsAPI.get(file.id, { fields: 'sheets(properties(title))' });
+    sheetName = (meta.sheets || [])[0]?.properties.title || 'Chiffrage';
+    res = await SheetsAPI.getValues(file.id, `'${sheetName.replace(/'/g, "''")}'`);
+  }
   const data = res.values || [];
   const cell = (r, c) => (data[r] && data[r][c] != null ? String(data[r][c]) : '');
 
@@ -430,20 +436,29 @@ export async function listChiffrages(onBatch) {
   const allResults = [];
   const seenIds = new Set();
 
+  const CONCURRENCY = 4; // parallel reads per client — fast but under the read quota
+
   const processFolder = async (folderId, label) => {
-    const files = await collectChiffrageFiles([folderId]);
+    const files = (await collectChiffrageFiles([folderId])).filter((f) => {
+      if (seenIds.has(f.id)) return false;
+      seenIds.add(f.id);
+      return true;
+    });
     const batch = [];
-    for (const file of files) {
-      if (seenIds.has(file.id)) continue;
-      seenIds.add(file.id);
-      try {
-        const ch = await readChiffrageFile(file);
-        allResults.push(ch);
-        batch.push(ch);
-      } catch (e) {
-        console.warn(`Impossible de lire ${file.name} :`, e.message);
+    let idx = 0;
+    const worker = async () => {
+      while (idx < files.length) {
+        const file = files[idx++];
+        try {
+          const ch = await readChiffrageFile(file);
+          allResults.push(ch);
+          batch.push(ch);
+        } catch (e) {
+          console.warn(`Impossible de lire ${file.name} :`, e.message);
+        }
       }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, files.length) }, worker));
     if (batch.length) onBatch?.(batch, label);
   };
 
