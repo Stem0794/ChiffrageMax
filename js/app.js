@@ -84,11 +84,13 @@ function escHtml(s) {
 async function syncFromDrive() {
   $('userStatus').textContent = 'Synchronisation…';
   try {
+    // Wire the shared config file ID (if configured) before any Drive call.
+    DriveConfig.setSharedConfigId(Config.get('sharedConfigId') || null);
     const remote = await DriveConfig.load();
     if (remote) {
       Config.fromDriveData(remote);
-    } else {
-      // No Drive file yet — push current localStorage state (first-run / migration)
+    } else if (!Config.get('sharedConfigId')) {
+      // No Drive file yet and no shared config — push local state (first-run).
       await DriveConfig.save(Config.toDriveData());
     }
   } catch (e) {
@@ -672,7 +674,7 @@ function renderTimeline() {
       lbl.className = 'tl-bar-label';
       lbl.style.top = `${top}px`;
       lbl.style.height = `${TL_BAR_H}px`;
-      if (w >= 96) {
+      if (w >= 160) {
         lbl.classList.add('inside');
         lbl.style.left = `${x1 + 8}px`;
         lbl.style.color = p.text;
@@ -831,7 +833,7 @@ function exportTimelinePDF() {
 
   // SVG coordinate system — fixed width, heights computed from content.
   const W           = 800;
-  const LABEL_W     = 180;
+  const LABEL_W     = 220;
   const QW          = (W - LABEL_W) / numQ; // quarter width in SVG units
   const LANE_H      = 14; // height per phase lane
   const BAR_H       = 10;
@@ -897,11 +899,22 @@ function exportTimelinePDF() {
     for (let i = 0; i <= numQ; i++) {
       out.push(`<line x1="${LABEL_W+i*QW}" y1="${y0}" x2="${LABEL_W+i*QW}" y2="${y0+ROW_H}" stroke="#e2e8f0"/>`);
     }
-    // Project label (truncated)
-    const MAX_LBL = 27;
-    const lbl = (e.label || '').length > MAX_LBL ? `${e.label.slice(0, MAX_LBL - 1)}…` : (e.label || '');
-    out.push(`<text x="8" y="${y0+ROW_PAD+ROW_H/2-6}" font-size="10" font-weight="600" fill="#1e293b">${escSvg(lbl)}</text>`);
-    if (e.client) out.push(`<text x="8" y="${y0+ROW_PAD+ROW_H/2+7}" font-size="9" fill="#64748b">${escSvg(e.client)}</text>`);
+    // Project label — up to 2 wrapped lines, vertically centred in the row.
+    const wrapLabel = (text, max) => {
+      if (!text || text.length <= max) return [text || ''];
+      const idx = text.lastIndexOf(' ', max);
+      const l1  = idx > 0 ? text.slice(0, idx) : text.slice(0, max);
+      const rest = idx > 0 ? text.slice(idx + 1) : text.slice(max);
+      return [l1, rest.length > max ? `${rest.slice(0, max - 1)}…` : rest];
+    };
+    const nameLines = wrapLabel(e.label || '', 32);
+    const LH = 12; // line-height in SVG units
+    const totalContentH = nameLines.length * LH + (e.client ? LH : 0);
+    const topBase = y0 + (ROW_H - totalContentH) / 2 + 10;
+    for (let ni = 0; ni < nameLines.length; ni++) {
+      out.push(`<text x="8" y="${topBase + ni * LH}" font-size="10" font-weight="600" fill="#1e293b">${escSvg(nameLines[ni])}</text>`);
+    }
+    if (e.client) out.push(`<text x="8" y="${topBase + nameLines.length * LH + 2}" font-size="9" fill="#64748b">${escSvg(e.client)}</text>`);
     // Phase bars
     TIMELINE_PHASES.forEach((p, li) => {
       const ph = e.phases?.[p.key];
@@ -934,7 +947,6 @@ function exportTimelinePDF() {
       out.push(`<text x="${lx+16}" y="${y0+23}" font-size="9" fill="#475569">${escSvg(p.label)}</text>`);
       lx += 94;
     }
-    out.push(`<text x="${W-8}" y="${y0+23}" text-anchor="end" font-size="9" fill="#94a3b8">Exporté le ${escSvg(today.toLocaleDateString('fr-FR'))}</text>`);
     return out.join('');
   }
 
@@ -963,9 +975,7 @@ function exportTimelinePDF() {
     // Title bar (page 1 only)
     if (first) {
       out.push(`<rect x="0" y="0" width="${W}" height="${TITLE_H}" fill="#1e293b"/>`);
-      out.push(`<text x="10" y="${TITLE_H*0.62}" font-size="10" fill="#94a3b8">ChiffrageMax</text>`);
       out.push(`<text x="${W/2}" y="${TITLE_H*0.64}" text-anchor="middle" font-size="17" font-weight="700" fill="#f8fafc">Timeline${escSvg(clientLabel)}</text>`);
-      out.push(`<text x="${W-10}" y="${TITLE_H*0.62}" text-anchor="end" font-size="9" fill="#64748b">${escSvg(today.toLocaleDateString('fr-FR'))}</text>`);
     }
     // Quarter header
     out.push(mkHeader(hdrY));
@@ -982,7 +992,7 @@ function exportTimelinePDF() {
   });
 
   const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
-<title>Timeline ChiffrageMax</title><style>
+<title> </title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#e2e8f0;font-family:Arial,Helvetica,sans-serif}
 .page{background:white;margin:12px auto;max-width:297mm;box-shadow:0 2px 8px rgba(0,0,0,.18)}
@@ -991,7 +1001,7 @@ body{background:#e2e8f0;font-family:Arial,Helvetica,sans-serif}
   body{background:white}
   .page{margin:0;box-shadow:none;page-break-after:always}
   .page:last-child{page-break-after:auto}
-  @page{size:A4 landscape;margin:1cm .8cm}
+  @page{size:A4 landscape;margin:0}
 }
 </style></head><body>
 ${svgs.map((s) => `<div class="page">${s}</div>`).join('')}
@@ -1734,6 +1744,8 @@ function openSettings() {
   $('cfgClientId').value = c.clientId;
   $('cfgTemplateId').value = c.templateId;
   $('cfgRootFolderId').value = c.rootFolderId;
+  $('cfgSharedConfigId').value = c.sharedConfigId || '';
+  $('cfgOwnConfigId').value = DriveConfig.getFileId() || '';
   $('addClientName').value = '';
   $('addClientFolder').value = '';
   renderClientList();
@@ -1741,16 +1753,30 @@ function openSettings() {
 }
 
 async function saveSettings() {
-  const rawTemplate = $('cfgTemplateId').value.trim();
-  const rawRoot = $('cfgRootFolderId').value.trim();
+  const rawTemplate  = $('cfgTemplateId').value.trim();
+  const rawRoot      = $('cfgRootFolderId').value.trim();
+  const prevSharedId = Config.get('sharedConfigId') || '';
+  const newSharedId  = $('cfgSharedConfigId').value.trim();
   Config.save({
-    clientId:     $('cfgClientId').value.trim(),
-    templateId:   extractSpreadsheetId(rawTemplate) || rawTemplate,
-    rootFolderId: extractFolderId(rawRoot) || rawRoot,
+    clientId:       $('cfgClientId').value.trim(),
+    templateId:     extractSpreadsheetId(rawTemplate) || rawTemplate,
+    rootFolderId:   extractFolderId(rawRoot) || rawRoot,
+    sharedConfigId: newSharedId,
   });
   closeModal('settingsModal');
   refreshClientDatalist();
   refreshClientSelector();
+  if (newSharedId !== prevSharedId) {
+    DriveConfig.setSharedConfigId(newSharedId || null);
+    if (newSharedId) {
+      // New shared config set: read the team config instead of overwriting it.
+      toast('Synchronisation depuis la config partagée…', '');
+      await syncFromDrive();
+      refreshClientSelector();
+      refreshClientDatalist();
+      return;
+    }
+  }
   toast('Configuration enregistrée.', 'success');
   await saveConfigToDrive();
 }
@@ -1844,6 +1870,14 @@ function init() {
   $('btnSettings').addEventListener('click', openSettings);
   $('btnSaveSettings').addEventListener('click', saveSettings);
   $('btnCloseSettings').addEventListener('click', () => closeModal('settingsModal'));
+  $('btnCopyConfigId').addEventListener('click', () => {
+    const id = $('cfgOwnConfigId').value;
+    if (id) {
+      navigator.clipboard.writeText(id)
+        .then(() => toast('ID copié dans le presse-papier.', 'success'))
+        .catch(() => toast('Copie impossible : autorisez l\'accès au presse-papier.', 'error'));
+    }
+  });
   $('btnAddClient').addEventListener('click', addClient);
 
   $('clientSelector').addEventListener('change', (e) => {

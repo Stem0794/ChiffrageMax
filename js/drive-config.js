@@ -8,11 +8,24 @@ async function tok() { return Auth.getToken(); }
 
 export const DriveConfig = {
   _fileId: null,
+  _sharedId: null, // when set, use this file ID directly (shared team config)
 
   reset() { this._fileId = null; },
 
+  setSharedConfigId(id) {
+    this._sharedId = id || null;
+    this._fileId = null; // force re-resolution on next operation
+  },
+
+  getFileId() { return this._fileId; },
+
   async _find() {
     if (this._fileId) return this._fileId;
+    // If a shared config file is configured, use it directly.
+    if (this._sharedId) {
+      this._fileId = this._sharedId;
+      return this._fileId;
+    }
     const t = await tok();
     const q = `name='${FILE_NAME}' and trashed=false and mimeType='application/json'`;
     const res = await fetch(

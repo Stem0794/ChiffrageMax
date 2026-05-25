@@ -644,7 +644,10 @@ label input, label select, .input-full {
   font-size: 12px; color: var(--ink);
   white-space: nowrap; pointer-events: none;
 }
-.tl-bar-label.inside { overflow: hidden; text-overflow: ellipsis; }
+.tl-bar-label.inside { display: block; line-height: 16px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Shared config ID row in settings modal */
+.cfg-id-row { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
 
 /* Timeline button highlight on dashboard rows */
 .btn.in-timeline { background: #14331f; border-color: #1f7a45; }

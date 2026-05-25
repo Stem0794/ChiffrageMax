@@ -16,9 +16,10 @@ const BAKED = {
 };
 
 const DEFAULTS = {
-  clientId: BAKED.clientId,
-  templateId: BAKED.templateId,
-  rootFolderId: '',
+  clientId:       BAKED.clientId,
+  templateId:     BAKED.templateId,
+  rootFolderId:   '',
+  sharedConfigId: '', // browser-local only — never synced to Drive
 };
 
 export const Config = {

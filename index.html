@@ -173,6 +173,22 @@
         <button id="btnAddClient" class="btn btn-primary btn-sm">Ajouter</button>
       </div>
 
+      <hr class="divider" />
+
+      <h3 class="section-title">🔗 Partage de configuration</h3>
+      <p class="hint" style="margin-top:0">Partagez votre fichier de config Drive avec vos collègues pour travailler sur le même tableau de bord et la même timeline.</p>
+      <label>Votre fichier de config (ID Drive)
+        <div class="cfg-id-row">
+          <input id="cfgOwnConfigId" type="text" readonly style="flex:1;width:auto;opacity:.7;cursor:default" placeholder="(synchronisez-vous pour obtenir l'ID)" />
+          <button id="btnCopyConfigId" class="btn btn-sm" type="button" title="Copier l'ID dans le presse-papier">📋 Copier</button>
+        </div>
+        <span class="field-hint">Partagez cet ID avec vos collègues via Drive → Partager → Lecteur (ou Éditeur pour la collaboration). Ils pourront le coller ci-dessous.</span>
+      </label>
+      <label>ID de config partagée (optionnel)
+        <input id="cfgSharedConfigId" type="text" placeholder="ID Drive du fichier ChiffrageMax-Config.json d'un collègue" />
+        <span class="field-hint">Laissez vide pour utiliser votre propre config. Si renseigné, l'app lira et écrira dans ce fichier partagé — idéal pour synchroniser toute l'équipe.</span>
+      </label>
+
       <div class="modal-actions">
         <button id="btnSaveSettings" class="btn btn-primary">Enregistrer</button>
         <button id="btnCloseSettings" class="btn btn-ghost">Fermer</button>
