@@ -786,6 +786,242 @@ function removeFromTimeline() {
   saveConfigToDrive();
 }
 
+/* ---- Timeline PDF export ---- */
+// Reuse escHtml for SVG text nodes — same escaping requirements.
+const escSvg = escHtml;
+
+function exportTimelinePDF() {
+  const entries = timelineEntries();
+  if (!entries.length) { toast('Aucun projet à exporter.', 'error'); return; }
+
+  // Recompute geometry independently so export works without rendering first.
+  const dates = [];
+  for (const e of entries) {
+    for (const p of TIMELINE_PHASES) {
+      const s = tlParse(e.phases?.[p.key]?.start);
+      const en = tlParse(e.phases?.[p.key]?.end);
+      if (s) dates.push(s);
+      if (en) dates.push(en);
+    }
+  }
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  dates.push(today);
+  const minD = new Date(Math.min(...dates.map((d) => d.getTime())));
+  const maxD = new Date(Math.max(...dates.map((d) => d.getTime())));
+  const spanStart = quarterIndex(startOfQuarter(minD));
+  const spanEnd   = quarterIndex(startOfQuarter(maxD)) + 1;
+  const numQ = spanEnd - spanStart + 1;
+
+  // SVG coordinate system — fixed width, heights computed from content.
+  const W           = 800;
+  const LABEL_W     = 180;
+  const QW          = (W - LABEL_W) / numQ; // quarter width in SVG units
+  const LANE_H      = 14; // height per phase lane
+  const BAR_H       = 10;
+  const ROW_PAD     = 8;
+  const ROW_H       = TIMELINE_PHASES.length * LANE_H + ROW_PAD * 2;
+  const HDR_H       = 54; // year row + quarter row
+  const TITLE_H     = 48; // dark title bar on page 1
+  const LEGEND_H    = 40;
+  const ROWS_P1     = 5;  // max rows on page 1 (has title overhead)
+  const ROWS_PN     = 6;  // max rows on other pages
+
+  const trackX = (d) => {
+    const qs = startOfQuarter(d);
+    const qe = new Date(qs.getFullYear(), qs.getMonth() + 3, 1);
+    return (quarterIndex(d) - spanStart + (d.getTime() - qs.getTime()) / (qe.getTime() - qs.getTime())) * QW;
+  };
+
+  // --- Build quarter header SVG fragment (placed at y = y0) ---
+  function mkHeader(y0) {
+    const out = [];
+    out.push(`<rect x="0" y="${y0}" width="${W}" height="${HDR_H}" fill="#f8fafc"/>`);
+    out.push(`<line x1="0" y1="${y0}" x2="${W}" y2="${y0}" stroke="#cbd5e1"/>`);
+    out.push(`<line x1="0" y1="${y0+HDR_H}" x2="${W}" y2="${y0+HDR_H}" stroke="#cbd5e1"/>`);
+    out.push(`<line x1="${LABEL_W}" y1="${y0}" x2="${LABEL_W}" y2="${y0+HDR_H}" stroke="#94a3b8"/>`);
+    out.push(`<text x="${LABEL_W/2}" y="${y0+HDR_H/2+4}" text-anchor="middle" font-size="11" font-weight="600" fill="#64748b">Projet</text>`);
+    // Year groups
+    const yg = {};
+    for (let i = 0; i < numQ; i++) {
+      const yr = Math.floor((spanStart + i) / 4);
+      if (!yg[yr]) yg[yr] = { s: i, e: i }; else yg[yr].e = i;
+    }
+    for (const [yr, g] of Object.entries(yg)) {
+      const x1 = LABEL_W + g.s * QW;
+      const x2 = LABEL_W + (g.e + 1) * QW;
+      out.push(`<text x="${(x1+x2)/2}" y="${y0+15}" text-anchor="middle" font-size="11" font-weight="700" fill="#1e293b">${escSvg(yr)}</text>`);
+      if (g.s > 0) out.push(`<line x1="${x1}" y1="${y0}" x2="${x1}" y2="${y0+22}" stroke="#94a3b8"/>`);
+    }
+    out.push(`<line x1="${LABEL_W}" y1="${y0+22}" x2="${W}" y2="${y0+22}" stroke="#e2e8f0"/>`);
+    for (let i = 0; i < numQ; i++) {
+      const x = LABEL_W + i * QW;
+      const q = ((spanStart + i) % 4) + 1;
+      out.push(`<line x1="${x}" y1="${y0+22}" x2="${x}" y2="${y0+HDR_H}" stroke="#e2e8f0"/>`);
+      out.push(`<text x="${x+QW/2}" y="${y0+HDR_H-9}" text-anchor="middle" font-size="11" fill="#475569">T${q}</text>`);
+    }
+    return out.join('');
+  }
+
+  // --- Today line (vertical dashed blue) ---
+  function mkTodayLine(y0, h) {
+    const tx = trackX(today);
+    if (tx < 0 || tx > W - LABEL_W) return '';
+    const x = LABEL_W + tx;
+    return `<line x1="${x}" y1="${y0}" x2="${x}" y2="${y0+h}" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+  }
+
+  // --- One project row ---
+  function mkRow(e, y0, odd) {
+    const out = [];
+    out.push(`<rect x="0" y="${y0}" width="${W}" height="${ROW_H}" fill="${odd ? '#f8fafc' : '#ffffff'}"/>`);
+    out.push(`<line x1="${LABEL_W}" y1="${y0}" x2="${LABEL_W}" y2="${y0+ROW_H}" stroke="#e2e8f0"/>`);
+    out.push(`<line x1="0" y1="${y0+ROW_H}" x2="${W}" y2="${y0+ROW_H}" stroke="#e2e8f0"/>`);
+    // Quarter vertical gridlines
+    for (let i = 0; i <= numQ; i++) {
+      out.push(`<line x1="${LABEL_W+i*QW}" y1="${y0}" x2="${LABEL_W+i*QW}" y2="${y0+ROW_H}" stroke="#e2e8f0"/>`);
+    }
+    // Project label (truncated)
+    const MAX_LBL = 27;
+    const lbl = (e.label || '').length > MAX_LBL ? `${e.label.slice(0, MAX_LBL - 1)}…` : (e.label || '');
+    out.push(`<text x="8" y="${y0+ROW_PAD+ROW_H/2-6}" font-size="10" font-weight="600" fill="#1e293b">${escSvg(lbl)}</text>`);
+    if (e.client) out.push(`<text x="8" y="${y0+ROW_PAD+ROW_H/2+7}" font-size="9" fill="#64748b">${escSvg(e.client)}</text>`);
+    // Phase bars
+    TIMELINE_PHASES.forEach((p, li) => {
+      const ph = e.phases?.[p.key];
+      const s = tlParse(ph?.start);
+      if (!s) return;
+      const en = tlParse(ph?.end);
+      const tx1 = trackX(s);
+      const tx2 = en ? trackX(new Date(en.getTime() + DAY_MS)) : tx1;
+      const bw  = Math.max(6, tx2 - tx1);
+      const bx  = LABEL_W + tx1;
+      const by  = y0 + ROW_PAD + li * LANE_H + (LANE_H - BAR_H) / 2;
+      out.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${BAR_H}" rx="3" fill="${p.bg}"/>`);
+      const txt = `${p.label} · ${phaseDateLabel(s, en)}`;
+      if (bw >= 80) {
+        out.push(`<text x="${bx+5}" y="${by+BAR_H*0.73}" font-size="7.5" fill="${p.text}" font-weight="500">${escSvg(txt)}</text>`);
+      } else if (LABEL_W + tx1 + bw + 4 < W - 10) {
+        out.push(`<text x="${bx+bw+4}" y="${by+BAR_H*0.73}" font-size="7.5" fill="#475569">${escSvg(txt)}</text>`);
+      }
+    });
+    return out.join('');
+  }
+
+  // --- Legend ---
+  function mkLegend(y0) {
+    const out = [];
+    out.push(`<line x1="0" y1="${y0+4}" x2="${W}" y2="${y0+4}" stroke="#e2e8f0"/>`);
+    let lx = 20;
+    for (const p of TIMELINE_PHASES) {
+      out.push(`<rect x="${lx}" y="${y0+14}" width="12" height="10" rx="2" fill="${p.bg}"/>`);
+      out.push(`<text x="${lx+16}" y="${y0+23}" font-size="9" fill="#475569">${escSvg(p.label)}</text>`);
+      lx += 94;
+    }
+    out.push(`<text x="${W-8}" y="${y0+23}" text-anchor="end" font-size="9" fill="#94a3b8">Exporté le ${escSvg(today.toLocaleDateString('fr-FR'))}</text>`);
+    return out.join('');
+  }
+
+  // --- Chunk entries into pages ---
+  const pages = [];
+  let remaining = [...entries];
+  let isFirst = true;
+  while (remaining.length) {
+    const n = isFirst ? ROWS_P1 : ROWS_PN;
+    pages.push({ rows: remaining.splice(0, n), isFirst });
+    isFirst = false;
+  }
+  const pageCount = pages.length;
+
+  // --- Generate SVG per page ---
+  const clientLabel = timelineClient ? ` — ${timelineClient}` : '';
+  const svgs = pages.map(({ rows, isFirst: first }, pi) => {
+    const isLast = pi === pageCount - 1;
+    const titleH = first ? TITLE_H : 0;
+    const legH   = isLast ? LEGEND_H : 0;
+    const totalH = titleH + HDR_H + rows.length * ROW_H + legH;
+    const hdrY   = titleH;
+    const rowsY  = titleH + HDR_H;
+    const out = [];
+    out.push(`<rect width="${W}" height="${totalH}" fill="white"/>`);
+    // Title bar (page 1 only)
+    if (first) {
+      out.push(`<rect x="0" y="0" width="${W}" height="${TITLE_H}" fill="#1e293b"/>`);
+      out.push(`<text x="10" y="${TITLE_H*0.62}" font-size="10" fill="#94a3b8">ChiffrageMax</text>`);
+      out.push(`<text x="${W/2}" y="${TITLE_H*0.64}" text-anchor="middle" font-size="17" font-weight="700" fill="#f8fafc">Timeline${escSvg(clientLabel)}</text>`);
+      out.push(`<text x="${W-10}" y="${TITLE_H*0.62}" text-anchor="end" font-size="9" fill="#64748b">${escSvg(today.toLocaleDateString('fr-FR'))}</text>`);
+    }
+    // Quarter header
+    out.push(mkHeader(hdrY));
+    // Today line spanning header + rows
+    out.push(mkTodayLine(hdrY, HDR_H + rows.length * ROW_H));
+    // Rows
+    rows.forEach((e, i) => out.push(mkRow(e, rowsY + i * ROW_H, (pi * ROWS_PN + i) % 2 === 1)));
+    // Legend
+    if (isLast) out.push(mkLegend(rowsY + rows.length * ROW_H));
+    // Outer border + page number
+    out.push(`<rect x="0.5" y="${hdrY+0.5}" width="${W-1}" height="${totalH-hdrY-1}" fill="none" stroke="#cbd5e1"/>`);
+    if (pageCount > 1) out.push(`<text x="${W/2}" y="${totalH-6}" text-anchor="middle" font-size="8" fill="#94a3b8">${pi+1} / ${pageCount}</text>`);
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${totalH}" style="width:100%;display:block;font-family:Arial,Helvetica,sans-serif">${out.join('')}</svg>`;
+  });
+
+  const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>Timeline ChiffrageMax</title><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#e2e8f0;font-family:Arial,Helvetica,sans-serif}
+.page{background:white;margin:12px auto;max-width:297mm;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.page svg{display:block;width:100%}
+@media print{
+  body{background:white}
+  .page{margin:0;box-shadow:none;page-break-after:always}
+  .page:last-child{page-break-after:auto}
+  @page{size:A4 landscape;margin:1cm .8cm}
+}
+</style></head><body>
+${svgs.map((s) => `<div class="page">${s}</div>`).join('')}
+<script>setTimeout(()=>window.print(),400);</script>
+</body></html>`;
+
+  const win = window.open('', '_blank', 'width=980,height=680');
+  if (!win) { toast('Autorisez les popups pour exporter en PDF.', 'error'); return; }
+  win.document.write(html);
+  win.document.close();
+}
+
+/* ---- Timeline JSON export/import (sharing with colleagues) ---- */
+function exportTimelineJSON() {
+  const tl = Config.getTimeline();
+  const count = Object.keys(tl).length;
+  if (!count) { toast('Aucune donnée de timeline à exporter.', 'error'); return; }
+  const json = JSON.stringify({ timeline: tl, exportedAt: new Date().toISOString() }, null, 2);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  a.download = 'ChiffrageMax-Timeline.json';
+  a.click();
+  toast(`${count} projet(s) exporté(s) en JSON.`, 'success');
+}
+
+function importTimelineJSON(file) {
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      const incoming = data.timeline && typeof data.timeline === 'object' && !Array.isArray(data.timeline)
+        ? data.timeline : (typeof data === 'object' && !Array.isArray(data) ? data : null);
+      if (!incoming) throw new Error('Format invalide (clé "timeline" introuvable).');
+      const count = Object.keys(incoming).length;
+      if (!count) { toast('Le fichier ne contient aucune entrée.', 'error'); return; }
+      Config.saveTimeline({ ...Config.getTimeline(), ...incoming });
+      saveConfigToDrive();
+      toast(`${count} projet(s) importé(s) et fusionné(s).`, 'success');
+      if (currentView === 'timeline') renderTimeline();
+      renderTable();
+    } catch (ex) {
+      toast(`Import échoué : ${ex.message}`, 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
 /* ---- Sort ---- */
 function updateSortHeaders() {
   document.querySelectorAll('th[data-sort]').forEach((th) => {
@@ -1616,6 +1852,13 @@ function init() {
   $('btnTlSave').addEventListener('click', saveTimelineEntry);
   $('btnTlRemove').addEventListener('click', removeFromTimeline);
   $('btnTlClose').addEventListener('click', () => closeModal('timelineModal'));
+  $('btnExportPDF').addEventListener('click', exportTimelinePDF);
+  $('btnExportTL').addEventListener('click', exportTimelineJSON);
+  $('btnImportTL').addEventListener('click', () => $('importTLFile').click());
+  $('importTLFile').addEventListener('change', (e) => {
+    const f = e.target.files?.[0];
+    if (f) { importTimelineJSON(f); e.target.value = ''; }
+  });
 
   document.querySelector('#chiffrageTable thead').addEventListener('click', (e) => {
     const th = e.target.closest('th[data-sort]');
