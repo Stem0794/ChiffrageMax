@@ -63,13 +63,15 @@ function showGlobalError(msg) {
 function busy(button, isBusy, label) {
   if (!button) return;
   if (isBusy) {
-    button.dataset.label = button.innerHTML;
-    // Build safely — label may contain user-controlled text (client names)
+    // Only capture the original label on the first busy(true) call so that
+    // repeated busy(true, newLabel) updates don't overwrite it with spinner HTML.
+    if (!button.dataset.label) button.dataset.label = button.innerHTML;
     button.innerHTML = '<span class="spinner"></span>';
     if (label) button.appendChild(document.createTextNode(` ${label}`));
     button.disabled = true;
   } else {
     button.innerHTML = button.dataset.label || button.innerHTML;
+    button.dataset.label = '';
     button.disabled = false;
   }
 }
