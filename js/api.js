@@ -7,7 +7,7 @@ const DRIVE = 'https://www.googleapis.com/drive/v3/files';
 // Google Workspace Shared Drive (otherwise Drive returns 404).
 const DRIVE_SHARED = 'supportsAllDrives=true&includeItemsFromAllDrives=true';
 
-async function gfetch(url, options = {}, { retryOn401 = true } = {}) {
+async function gfetch(url, options = {}, { retryOn401 = true, attempt = 0 } = {}) {
   const token = await Auth.getToken();
   const res = await fetch(url, {
     ...options,
@@ -20,7 +20,15 @@ async function gfetch(url, options = {}, { retryOn401 = true } = {}) {
 
   if (res.status === 401 && retryOn401) {
     Auth.signOut();
-    return gfetch(url, options, { retryOn401: false });
+    return gfetch(url, options, { retryOn401: false, attempt });
+  }
+
+  // Retry on 429 (quota exceeded) with exponential backoff, up to 4 attempts.
+  if (res.status === 429 && attempt < 4) {
+    const retryAfter = parseInt(res.headers.get('Retry-After') || '0', 10);
+    const delay = retryAfter > 0 ? retryAfter * 1000 : Math.min(30000, 1000 * 2 ** attempt);
+    await new Promise((r) => setTimeout(r, delay));
+    return gfetch(url, options, { retryOn401, attempt: attempt + 1 });
   }
 
   if (!res.ok) {

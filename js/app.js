@@ -13,8 +13,8 @@ const $ = (id) => document.getElementById(id);
 let chiffrages = [];
 let selectedClient = '';
 let filterStatuses = new Set();
-let sortField = 'name';
-let sortAsc = true;
+let sortField = 'date';
+let sortAsc = false;
 let dashboardLoading = false;
 
 /* ---- Roles ---- */
