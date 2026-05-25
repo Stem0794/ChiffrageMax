@@ -350,19 +350,15 @@ async function collectChiffrageFiles(folderIds) {
 }
 
 // Read one chiffrage file: header (C1:C5), validation status, total.
-// Fast path is a single getValues on the standard 'Chiffrage' sheet; only if
-// that sheet is missing do we spend a second call discovering the real name.
+// Single API call (getGrid) returns titles + values for every sheet, so we
+// pick the 'Chiffrage' tab (or the first one) without a separate metadata call.
 export async function readChiffrageFile(file) {
-  let sheetName = 'Chiffrage';
-  let res;
-  try {
-    res = await SheetsAPI.getValues(file.id, "'Chiffrage'");
-  } catch {
-    const meta = await SheetsAPI.get(file.id, { fields: 'sheets(properties(title))' });
-    sheetName = (meta.sheets || [])[0]?.properties.title || 'Chiffrage';
-    res = await SheetsAPI.getValues(file.id, `'${sheetName.replace(/'/g, "''")}'`);
-  }
-  const data = res.values || [];
+  const meta = await SheetsAPI.getGrid(file.id);
+  const sheets = meta.sheets || [];
+  const sheet = sheets.find((s) => s.properties?.title === 'Chiffrage') || sheets[0];
+  const sheetName = sheet?.properties?.title || 'Chiffrage';
+  const rowData = sheet?.data?.[0]?.rowData || [];
+  const data = rowData.map((row) => (row.values || []).map((c) => (c.formattedValue != null ? c.formattedValue : '')));
   const cell = (r, c) => (data[r] && data[r][c] != null ? String(data[r][c]) : '');
 
   // Validation status: cell below the "Validation chiffrage" label (column A).

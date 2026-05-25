@@ -7,7 +7,26 @@ const DRIVE = 'https://www.googleapis.com/drive/v3/files';
 // Google Workspace Shared Drive (otherwise Drive returns 404).
 const DRIVE_SHARED = 'supportsAllDrives=true&includeItemsFromAllDrives=true';
 
+// Proactive rate limiter: the Sheets API allows ~60 read requests/min/user.
+// We cap below that and let short bursts through, then pace the rest, so we
+// stop firing faster than the quota instead of relying on reactive backoff.
+const RATE_LIMIT = 50;
+const RATE_WINDOW = 60000;
+let reqTimes = [];
+async function rateLimit() {
+  for (;;) {
+    const now = Date.now();
+    reqTimes = reqTimes.filter((t) => now - t < RATE_WINDOW);
+    if (reqTimes.length < RATE_LIMIT) {
+      reqTimes.push(now);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, RATE_WINDOW - (now - reqTimes[0]) + 50));
+  }
+}
+
 async function gfetch(url, options = {}, { retryOn401 = true, attempt = 0 } = {}) {
+  await rateLimit();
   const token = await Auth.getToken();
   const res = await fetch(url, {
     ...options,
@@ -23,8 +42,9 @@ async function gfetch(url, options = {}, { retryOn401 = true, attempt = 0 } = {}
     return gfetch(url, options, { retryOn401: false, attempt });
   }
 
-  // Retry on 429 (quota exceeded) with exponential backoff, up to 4 attempts.
-  if (res.status === 429 && attempt < 4) {
+  // Retry on 429 (quota exceeded) with exponential backoff, up to 6 attempts
+  // (1,2,4,8,16,30s) — enough to outlast a full one-minute quota window.
+  if (res.status === 429 && attempt < 6) {
     const retryAfter = parseInt(res.headers.get('Retry-After') || '0', 10);
     const delay = retryAfter > 0 ? retryAfter * 1000 : Math.min(30000, 1000 * 2 ** attempt);
     await new Promise((r) => setTimeout(r, delay));
@@ -54,6 +74,13 @@ export const SheetsAPI = {
 
   getValues(spreadsheetId, range) {
     return gfetch(`${SHEETS}/${spreadsheetId}/values/${encodeURIComponent(range)}`);
+  },
+
+  // Single-call read: returns every sheet's title + formatted cell values.
+  // Lets a chiffrage file be parsed in one request regardless of tab name.
+  getGrid(spreadsheetId) {
+    const fields = 'sheets(properties(title),data(rowData(values(formattedValue))))';
+    return gfetch(`${SHEETS}/${spreadsheetId}?includeGridData=true&fields=${encodeURIComponent(fields)}`);
   },
 
   updateValues(spreadsheetId, range, values, valueInputOption = 'USER_ENTERED') {
