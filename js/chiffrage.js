@@ -55,6 +55,20 @@ async function genererChiffrageSelonConfig(newSpreadsheetId, sheetId, lastCol, i
 
   const structural = [];
 
+  // Clear all user-entered formatting on a row (used to ensure blank separator rows
+  // don't inherit the grey style from the item row above them).
+  const clearRowFormat = (row1) => ({
+    repeatCell: {
+      range: {
+        sheetId,
+        startRowIndex: row1 - 1, endRowIndex: row1,
+        startColumnIndex: 0, endColumnIndex: lastCol,
+      },
+      cell: { userEnteredFormat: {} },
+      fields: 'userEnteredFormat',
+    },
+  });
+
   const copyRow = (srcRow1, dstRow1) => ({
     copyPaste: {
       source: {
@@ -111,6 +125,9 @@ async function genererChiffrageSelonConfig(newSpreadsheetId, sheetId, lastCol, i
     for (let r = rowFirst; r <= rowLast; r++) {
       structural.push(copyRow(ROW_ITEM, r));
     }
+    // The blank separator row inherits the grey item-row format via inheritFromBefore;
+    // clear it so it renders as a plain white empty row.
+    structural.push(clearRowFormat(insertPos));
 
     phaseLabels.push({ row: rowHeader, label: `${p} - NOUVELLE PHASE` });
     phaseTotalRows.push(rowHeader);
@@ -163,23 +180,54 @@ async function genererChiffrageSelonConfig(newSpreadsheetId, sheetId, lastCol, i
 
   await SheetsAPI.batchUpdateValues(newSpreadsheetId, data);
 
-  // --- Total row formatting (bold, dark background, white text) ---
-  await SheetsAPI.batchUpdate(newSpreadsheetId, [{
-    repeatCell: {
-      range: {
-        sheetId,
-        startRowIndex: totalRow - 1, endRowIndex: totalRow,
-        startColumnIndex: COL_LABEL - 1, endColumnIndex: COL_BUDGET,
-      },
-      cell: {
-        userEnteredFormat: {
-          backgroundColor: hexToRgb('#555555'),
-          textFormat: { bold: true, foregroundColor: hexToRgb('#ffffff') },
+  // --- Total row formatting + column widths + text wrap (single batchUpdate) ---
+  await SheetsAPI.batchUpdate(newSpreadsheetId, [
+    // Total row: dark background, bold white text.
+    {
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: totalRow - 1, endRowIndex: totalRow,
+          startColumnIndex: COL_LABEL - 1, endColumnIndex: COL_BUDGET,
         },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: hexToRgb('#555555'),
+            textFormat: { bold: true, foregroundColor: hexToRgb('#ffffff') },
+          },
+        },
+        fields: 'userEnteredFormat(backgroundColor,textFormat)',
       },
-      fields: 'userEnteredFormat(backgroundColor,textFormat)',
     },
-  }]);
+    // Column A: 300 px wide.
+    {
+      updateDimensionProperties: {
+        range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 },
+        properties: { pixelSize: 300 },
+        fields: 'pixelSize',
+      },
+    },
+    // Columns B–O: 150 px wide.
+    {
+      updateDimensionProperties: {
+        range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 15 },
+        properties: { pixelSize: 150 },
+        fields: 'pixelSize',
+      },
+    },
+    // Column A: wrap text so long descriptions don't overflow adjacent cells.
+    {
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 0, endRowIndex: 2000,
+          startColumnIndex: 0, endColumnIndex: 1,
+        },
+        cell: { userEnteredFormat: { wrapStrategy: 'WRAP' } },
+        fields: 'userEnteredFormat.wrapStrategy',
+      },
+    },
+  ]);
 
   // --- "Validation chiffrage" dropdown ---
   // Scan column A for the label (it shifts down with phase insertions), then apply
