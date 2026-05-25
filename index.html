@@ -45,6 +45,7 @@
     <nav class="app-nav">
       <button id="navDashboard" class="nav-tab active" data-view="dashboard">📋 Tableau de bord</button>
       <button id="navStats" class="nav-tab" data-view="stats">📊 Statistiques</button>
+      <button id="navTimeline" class="nav-tab" data-view="timeline">🗓 Timeline</button>
     </nav>
 
     <section id="dashboardView" class="view">
@@ -118,6 +119,23 @@
             <div id="statsFunnel" class="stats-funnel"></div>
           </div>
         </div>
+      </section>
+    </section>
+
+    <section id="timelineView" class="view hidden">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-head-left">
+            <h2>Timeline</h2>
+            <select id="timelineClientSelector" class="input client-selector-input"></select>
+          </div>
+          <div class="panel-actions">
+            <button id="tlPrev" class="btn" title="Trimestre précédent">◀</button>
+            <button id="tlToday" class="btn">Aujourd'hui</button>
+            <button id="tlNext" class="btn" title="Trimestre suivant">▶</button>
+          </div>
+        </div>
+        <div id="timelineChart" class="timeline-chart"></div>
       </section>
     </section>
   </main>
@@ -213,6 +231,26 @@
         <div style="display:flex;gap:8px">
           <button id="btnSaveRoles" class="btn btn-primary">Enregistrer</button>
           <button id="btnCloseRoles" class="btn btn-ghost">Fermer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeline phases modal -->
+  <div id="timelineModal" class="modal hidden">
+    <div class="modal-card modal-card--tall">
+      <h2>🗓 Planning — <span id="tlModalLabel"></span></h2>
+      <p class="hint" style="margin:0 0 12px">
+        Définissez la période de chaque phase. La date de fin est optionnelle
+        (laissez-la vide, p. ex. pour la MEP, pour n'afficher qu'un jalon de démarrage).
+      </p>
+      <div id="tlPhaseRows" class="tl-phase-rows"></div>
+      <div id="tlModalError" class="banner banner-error hidden"></div>
+      <div class="modal-actions" style="justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:16px">
+        <button id="btnTlRemove" class="btn btn-delete">Retirer de la timeline</button>
+        <div style="display:flex;gap:8px">
+          <button id="btnTlSave" class="btn btn-primary">Enregistrer</button>
+          <button id="btnTlClose" class="btn btn-ghost">Fermer</button>
         </div>
       </div>
     </div>

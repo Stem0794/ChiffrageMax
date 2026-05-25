@@ -565,6 +565,106 @@ label input, label select, .input-full {
 }
 .btn-delete:hover { background: #2d1212; }
 
+/* ---- Timeline (Gantt) ---- */
+.timeline-chart { padding: 8px 0 4px; }
+.timeline-empty {
+  color: var(--muted); font-size: 14px; text-align: center;
+  padding: 48px 20px; line-height: 1.6;
+}
+.timeline-scroll {
+  overflow: auto;
+  max-height: calc(100vh - 250px);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.tl-inner { position: relative; }
+
+.tl-header {
+  position: sticky; top: 0; z-index: 3;
+  display: flex; height: 46px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.tl-corner {
+  position: sticky; left: 0; z-index: 4;
+  flex: 0 0 auto;
+  display: flex; align-items: center;
+  padding: 0 14px;
+  font-size: 12px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+.tl-qcols { position: relative; flex: 0 0 auto; }
+.tl-qcol {
+  position: absolute; top: 0; bottom: 0;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 0 10px;
+  border-left: 1px solid var(--border);
+}
+.tl-year { font-size: 13px; font-weight: 700; color: var(--ink); }
+.tl-quarter { font-size: 11px; color: var(--muted); }
+
+.tl-today {
+  position: absolute; top: 0; bottom: 0; z-index: 1;
+  width: 2px; background: var(--primary);
+  pointer-events: none;
+}
+
+.tl-row {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.tl-label {
+  position: sticky; left: 0; z-index: 2;
+  flex: 0 0 auto;
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  padding: 0 14px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+}
+.tl-label:hover { background: var(--hover); }
+.tl-label-name { font-size: 13px; color: var(--ink); line-height: 1.25; }
+.tl-label-client { font-size: 11px; color: var(--muted); }
+
+.tl-track {
+  position: relative; flex: 0 0 auto;
+  background-image: linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent 100%);
+  background-repeat: repeat-x;
+}
+.tl-bar {
+  position: absolute; z-index: 1;
+  border-radius: 5px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.35);
+}
+.tl-bar-label {
+  position: absolute; z-index: 1;
+  display: flex; align-items: center;
+  font-size: 12px; color: var(--ink);
+  white-space: nowrap; pointer-events: none;
+}
+.tl-bar-label.inside { overflow: hidden; text-overflow: ellipsis; }
+
+/* Timeline button highlight on dashboard rows */
+.btn.in-timeline { background: #14331f; border-color: #1f7a45; }
+
+/* Timeline edit modal */
+.tl-phase-rows { display: flex; flex-direction: column; gap: 10px; }
+.tl-phase-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 10px;
+  background: var(--panel-alt); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.tl-phase-swatch { width: 14px; height: 14px; border-radius: 4px; flex: 0 0 auto; }
+.tl-phase-name { font-size: 13px; font-weight: 600; min-width: 110px; flex: 0 0 auto; }
+.tl-phase-row .tl-phase-field {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-bottom: 0;
+  font-size: 11px; color: var(--muted);
+}
+.tl-phase-row .tl-phase-field input { margin-top: 0; width: auto; display: block; }
+
 /* ---- Scrollbar ---- */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg); }

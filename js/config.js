@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'chiffragemax.config';
 const CLIENTS_KEY = 'chiffragemax.clients';
+const TIMELINE_KEY = 'chiffragemax.timeline';
 
 // --- Baked-in defaults (shipped in the app) ---------------------------------
 // These let colleagues use the app without configuring anything. They are NOT
@@ -112,6 +113,39 @@ export const Config = {
     this.saveClients(clients);
   },
 
+  // --- Timeline: per-chiffrage phase date ranges, keyed by Drive file id ---
+  // Entry: { id, label, client, phases: { conception|developpement|recette|mep:
+  //          { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD'? } } }
+
+  getTimeline() {
+    try {
+      const m = JSON.parse(localStorage.getItem(TIMELINE_KEY) || '{}');
+      return m && typeof m === 'object' && !Array.isArray(m) ? m : {};
+    } catch {
+      return {};
+    }
+  },
+
+  saveTimeline(map) {
+    localStorage.setItem(TIMELINE_KEY, JSON.stringify(map || {}));
+  },
+
+  getTimelineEntry(id) {
+    return this.getTimeline()[id] || null;
+  },
+
+  setTimelineEntry(id, entry) {
+    const m = this.getTimeline();
+    m[id] = { ...entry, id };
+    this.saveTimeline(m);
+  },
+
+  removeTimelineEntry(id) {
+    const m = this.getTimeline();
+    delete m[id];
+    this.saveTimeline(m);
+  },
+
   // Serialise everything except clientId for Drive persistence.
   toDriveData() {
     const c = this.load();
@@ -119,6 +153,7 @@ export const Config = {
       templateId:   c.templateId   || '',
       rootFolderId: c.rootFolderId || '',
       clients:      this.getClients(),
+      timeline:     this.getTimeline(),
     };
   },
 
@@ -130,5 +165,8 @@ export const Config = {
       rootFolderId: data.rootFolderId ?? '',
     });
     if (Array.isArray(data.clients)) this.saveClients(data.clients);
+    if (data.timeline && typeof data.timeline === 'object' && !Array.isArray(data.timeline)) {
+      this.saveTimeline(data.timeline);
+    }
   },
 };

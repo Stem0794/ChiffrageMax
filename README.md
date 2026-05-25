@@ -28,6 +28,14 @@ Onglet dédié, accessible via le menu de navigation, avec graphiques SVG (sans 
 - **Tunnel de conversion** : Créés → Envoyés → Validés, avec taux de conversion entre chaque étape.
 - Filtrable par client (ou tous les clients).
 
+### Timeline (planning)
+Onglet dédié affichant un **diagramme de Gantt** des projets ajoutés à la timeline (sans dépendance externe) :
+- **Bouton 🗓 sur chaque ligne** du tableau de bord : ouvre une fenêtre pour définir les périodes des 4 phases (**Conception**, **Développement**, **Recette**, **MEP**). La date de fin est optionnelle (p. ex. la MEP n'affiche qu'un jalon de démarrage).
+- **Visualisation par trimestre** : colonnes de largeur fixe (un trimestre), barres colorées par phase, **ligne « aujourd'hui »**.
+- **Navigation** : défilement horizontal, boutons trimestre précédent/suivant et bouton **Aujourd'hui** pour recentrer sur la date du jour.
+- **Filtrable par client** (idéal pour partager à un client le planning de ses projets validés).
+- Les périodes sont sauvegardées dans la configuration Drive (synchronisées entre appareils).
+
 ## Configuration Google Cloud (une fois)
 
 1. Créez un projet sur [console.cloud.google.com](https://console.cloud.google.com/).

@@ -152,6 +152,7 @@ function refreshClientSelector() {
     selectedClient = '';
   }
   refreshStatsClientSelector();
+  refreshTimelineClientSelector();
 }
 
 function refreshClientDatalist() {
@@ -284,9 +285,12 @@ function showView(view) {
   currentView = view;
   $('dashboardView').classList.toggle('hidden', view !== 'dashboard');
   $('statsView').classList.toggle('hidden', view !== 'stats');
+  $('timelineView').classList.toggle('hidden', view !== 'timeline');
   $('navDashboard').classList.toggle('active', view === 'dashboard');
   $('navStats').classList.toggle('active', view === 'stats');
+  $('navTimeline').classList.toggle('active', view === 'timeline');
   if (view === 'stats') renderStats();
+  if (view === 'timeline') renderTimeline();
 }
 
 function refreshStatsClientSelector() {
@@ -304,6 +308,23 @@ function refreshStatsClientSelector() {
   }
   sel.value = [...sel.options].some((o) => o.value === prev) ? prev : '';
   statsClient = sel.value;
+}
+
+function refreshTimelineClientSelector() {
+  const sel = $('timelineClientSelector');
+  if (!sel) return;
+  const prev = timelineClient;
+  sel.innerHTML = '';
+  const all = document.createElement('option');
+  all.value = ''; all.textContent = 'Tous les clients';
+  sel.appendChild(all);
+  for (const c of Config.getClients()) {
+    const opt = document.createElement('option');
+    opt.value = c.name; opt.textContent = c.name;
+    sel.appendChild(opt);
+  }
+  sel.value = [...sel.options].some((o) => o.value === prev) ? prev : '';
+  timelineClient = sel.value;
 }
 
 function statsScope() {
@@ -463,6 +484,308 @@ function renderFunnel(scope) {
   });
 }
 
+/* ---- Timeline (Gantt) ---- */
+const TIMELINE_PHASES = [
+  { key: 'conception',    label: 'Conception',    bg: '#7ec77e', text: '#0d2b0d' },
+  { key: 'developpement', label: 'Developpement', bg: '#7fb1f0', text: '#0a2747' },
+  { key: 'recette',       label: 'Recette',       bg: '#f3b878', text: '#4a2c08' },
+  { key: 'mep',           label: 'MEP',           bg: '#ec8b8b', text: '#4a1212' },
+];
+const FR_MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+const QUARTER_W = 240; // px per quarter — fixed "quarter size" columns
+const TL_LABEL_W = 200;
+const TL_LANE_H = 28;
+const TL_ROW_PAD = 8;
+const TL_BAR_H = 16;
+const TL_MIN_BAR = 9;
+const DAY_MS = 86400000;
+
+let timelineClient = ''; // '' = all clients
+let tlGeom = null;       // { spanStartIdx, numQ, dateToX, totalW }
+let tlEditTarget = null;
+
+const pad2 = (n) => String(n).padStart(2, '0');
+function tlParse(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return isNaN(d.getTime()) ? null : d;
+}
+function quarterIndex(d) { return d.getFullYear() * 4 + Math.floor(d.getMonth() / 3); }
+function startOfQuarter(d) { return new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1); }
+function tlShort(d) { return `${d.getDate()} ${FR_MONTHS[d.getMonth()]}`; }
+function phaseDateLabel(start, end) {
+  if (start && end) return `${tlShort(start)} – ${tlShort(end)}`;
+  if (start) return `Démarre ${tlShort(start)}`;
+  return '';
+}
+
+function timelineEntries() {
+  let arr = Object.values(Config.getTimeline());
+  if (timelineClient) {
+    const key = timelineClient.trim().toLowerCase();
+    arr = arr.filter((e) => (e.client || '').trim().toLowerCase() === key);
+  }
+  const earliest = (e) => {
+    let min = Infinity;
+    for (const p of TIMELINE_PHASES) {
+      const s = tlParse(e.phases?.[p.key]?.start);
+      if (s) min = Math.min(min, s.getTime());
+    }
+    return min;
+  };
+  return arr.sort((a, b) => earliest(a) - earliest(b));
+}
+
+function renderTimeline() {
+  const host = $('timelineChart');
+  host.innerHTML = '';
+  const entries = timelineEntries();
+
+  if (!entries.length) {
+    tlGeom = null;
+    const empty = document.createElement('div');
+    empty.className = 'timeline-empty';
+    empty.innerHTML = timelineClient
+      ? `Aucun projet dans la timeline pour « ${escHtml(timelineClient)} ».`
+      : 'Aucun projet dans la timeline.<br>Ajoutez-en un via le bouton 🗓 sur une ligne du tableau de bord.';
+    host.appendChild(empty);
+    return;
+  }
+
+  // Collect every phase date to size the time span.
+  const dates = [];
+  for (const e of entries) {
+    for (const p of TIMELINE_PHASES) {
+      const s = tlParse(e.phases?.[p.key]?.start);
+      const en = tlParse(e.phases?.[p.key]?.end);
+      if (s) dates.push(s);
+      if (en) dates.push(en);
+    }
+  }
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  dates.push(today);
+  const minD = new Date(Math.min(...dates.map((d) => d.getTime())));
+  const maxD = new Date(Math.max(...dates.map((d) => d.getTime())));
+  const spanStartIdx = quarterIndex(startOfQuarter(minD));
+  const spanEndIdx = quarterIndex(startOfQuarter(maxD)) + 1; // pad a trailing quarter
+  const numQ = spanEndIdx - spanStartIdx + 1;
+  const totalW = numQ * QUARTER_W;
+
+  const dateToX = (d) => {
+    const qs = startOfQuarter(d);
+    const qe = new Date(qs.getFullYear(), qs.getMonth() + 3, 1);
+    const frac = (d.getTime() - qs.getTime()) / (qe.getTime() - qs.getTime());
+    return (quarterIndex(d) - spanStartIdx + frac) * QUARTER_W;
+  };
+  tlGeom = { spanStartIdx, numQ, dateToX, totalW };
+
+  const scroll = document.createElement('div');
+  scroll.className = 'timeline-scroll';
+  scroll.id = 'timelineScroll';
+
+  const inner = document.createElement('div');
+  inner.className = 'tl-inner';
+  inner.style.width = `${TL_LABEL_W + totalW}px`;
+
+  // --- Header: years + quarters ---
+  const header = document.createElement('div');
+  header.className = 'tl-header';
+  const corner = document.createElement('div');
+  corner.className = 'tl-corner';
+  corner.textContent = 'Projet';
+  corner.style.width = `${TL_LABEL_W}px`;
+  const qcols = document.createElement('div');
+  qcols.className = 'tl-qcols';
+  qcols.style.width = `${totalW}px`;
+  for (let i = 0; i < numQ; i++) {
+    const qi = spanStartIdx + i;
+    const year = Math.floor(qi / 4);
+    const q = (qi % 4) + 1;
+    const col = document.createElement('div');
+    col.className = 'tl-qcol';
+    col.style.left = `${i * QUARTER_W}px`;
+    col.style.width = `${QUARTER_W}px`;
+    const showYear = q === 1 || i === 0;
+    col.innerHTML = `${showYear ? `<span class="tl-year">${year}</span>` : ''}<span class="tl-quarter">T${q}</span>`;
+    qcols.appendChild(col);
+  }
+  header.append(corner, qcols);
+
+  // --- Today vertical line (scrolls with content) ---
+  const todayLine = document.createElement('div');
+  todayLine.className = 'tl-today';
+  todayLine.style.left = `${TL_LABEL_W + dateToX(today)}px`;
+
+  inner.append(todayLine, header);
+
+  // --- Rows ---
+  for (const e of entries) {
+    const row = document.createElement('div');
+    row.className = 'tl-row';
+    row.style.height = `${TIMELINE_PHASES.length * TL_LANE_H + TL_ROW_PAD * 2}px`;
+
+    const label = document.createElement('div');
+    label.className = 'tl-label';
+    label.style.width = `${TL_LABEL_W}px`;
+    label.title = 'Modifier le planning';
+    const name = document.createElement('span');
+    name.className = 'tl-label-name';
+    name.textContent = e.label || '(sans nom)';
+    label.appendChild(name);
+    if (e.client) {
+      const cl = document.createElement('span');
+      cl.className = 'tl-label-client';
+      cl.textContent = e.client;
+      label.appendChild(cl);
+    }
+    label.addEventListener('click', () => openTimelineModal(e));
+
+    const track = document.createElement('div');
+    track.className = 'tl-track';
+    track.style.width = `${totalW}px`;
+    track.style.backgroundSize = `${QUARTER_W}px 100%`;
+
+    TIMELINE_PHASES.forEach((p, li) => {
+      const ph = e.phases?.[p.key];
+      const s = tlParse(ph?.start);
+      if (!s) return;
+      const en = tlParse(ph?.end);
+      const x1 = dateToX(s);
+      // End date is inclusive → extend to the start of the following day.
+      const x2 = en ? dateToX(new Date(en.getTime() + DAY_MS)) : x1;
+      const w = Math.max(TL_MIN_BAR, x2 - x1);
+      const top = TL_ROW_PAD + li * TL_LANE_H + (TL_LANE_H - TL_BAR_H) / 2;
+
+      const bar = document.createElement('div');
+      bar.className = 'tl-bar';
+      bar.style.left = `${x1}px`;
+      bar.style.width = `${w}px`;
+      bar.style.top = `${top}px`;
+      bar.style.height = `${TL_BAR_H}px`;
+      bar.style.background = p.bg;
+      track.appendChild(bar);
+
+      const text = `${p.label} • ${phaseDateLabel(s, en)}`;
+      const lbl = document.createElement('span');
+      lbl.className = 'tl-bar-label';
+      lbl.style.top = `${top}px`;
+      lbl.style.height = `${TL_BAR_H}px`;
+      if (w >= 96) {
+        lbl.classList.add('inside');
+        lbl.style.left = `${x1 + 8}px`;
+        lbl.style.color = p.text;
+        lbl.style.maxWidth = `${w - 12}px`;
+      } else {
+        lbl.style.left = `${x1 + w + 6}px`;
+      }
+      lbl.textContent = text;
+      track.appendChild(lbl);
+    });
+
+    row.append(label, track);
+    inner.appendChild(row);
+  }
+
+  scroll.appendChild(inner);
+  host.appendChild(scroll);
+  requestAnimationFrame(tlGoToday);
+}
+
+function tlGoToday() {
+  const sc = $('timelineScroll');
+  if (!sc || !tlGeom) return;
+  const x = TL_LABEL_W + tlGeom.dateToX(new Date());
+  sc.scrollLeft = Math.max(0, x - sc.clientWidth * 0.35);
+}
+function tlScrollBy(px) {
+  const sc = $('timelineScroll');
+  if (sc) sc.scrollLeft += px;
+}
+
+/* ---- Timeline edit modal ---- */
+function openTimelineModal(target) {
+  tlEditTarget = target;
+  const label = target.projet || target.label || target.name || '';
+  $('tlModalLabel').textContent = label;
+  $('tlModalError').classList.add('hidden');
+  const entry = Config.getTimelineEntry(target.id);
+  let phases = entry?.phases || {};
+  // Convenience: when first adding, prefill Conception start with the chiffrage date.
+  if (!entry && target.date) {
+    const iso = toDateInputValue(target.date);
+    if (iso) phases = { conception: { start: iso } };
+  }
+  renderTlPhaseRows(phases);
+  $('btnTlRemove').style.display = entry ? '' : 'none';
+  openModal('timelineModal');
+}
+
+function renderTlPhaseRows(phases) {
+  const c = $('tlPhaseRows');
+  c.innerHTML = '';
+  for (const p of TIMELINE_PHASES) {
+    const v = phases[p.key] || {};
+    const row = document.createElement('div');
+    row.className = 'tl-phase-row';
+    row.dataset.key = p.key;
+    row.innerHTML = `
+      <span class="tl-phase-swatch" style="background:${p.bg}"></span>
+      <span class="tl-phase-name">${escHtml(p.label)}</span>
+      <label class="tl-phase-field">Début<input type="date" class="tl-start" value="${escHtml(v.start || '')}" /></label>
+      <label class="tl-phase-field">Fin<input type="date" class="tl-end" value="${escHtml(v.end || '')}" /></label>
+    `;
+    c.appendChild(row);
+  }
+}
+
+function saveTimelineEntry() {
+  if (!tlEditTarget) return;
+  const rows = $('tlPhaseRows').querySelectorAll('.tl-phase-row');
+  const phases = {};
+  let err = '';
+  rows.forEach((r) => {
+    const key = r.dataset.key;
+    const start = r.querySelector('.tl-start').value;
+    const end = r.querySelector('.tl-end').value;
+    if (start) {
+      const o = { start };
+      if (end) {
+        if (end < start) err = 'La date de fin doit être postérieure à la date de début.';
+        o.end = end;
+      }
+      phases[key] = o;
+    } else if (end) {
+      err = 'Renseignez une date de début pour chaque phase ayant une date de fin.';
+    }
+  });
+  const errEl = $('tlModalError');
+  if (err) { errEl.textContent = err; errEl.classList.remove('hidden'); return; }
+  if (!Object.keys(phases).length) {
+    errEl.textContent = 'Renseignez au moins une phase (date de début).';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  const label = tlEditTarget.projet || tlEditTarget.label || tlEditTarget.name || '';
+  Config.setTimelineEntry(tlEditTarget.id, { label, client: tlEditTarget.client || '', phases });
+  closeModal('timelineModal');
+  toast('Timeline mise à jour.', 'success');
+  renderTable();
+  if (currentView === 'timeline') renderTimeline();
+  saveConfigToDrive();
+}
+
+function removeFromTimeline() {
+  if (!tlEditTarget) return;
+  Config.removeTimelineEntry(tlEditTarget.id);
+  closeModal('timelineModal');
+  toast('Retiré de la timeline.', 'success');
+  renderTable();
+  if (currentView === 'timeline') renderTimeline();
+  saveConfigToDrive();
+}
+
 /* ---- Sort ---- */
 function updateSortHeaders() {
   document.querySelectorAll('th[data-sort]').forEach((th) => {
@@ -601,6 +924,13 @@ function renderTable() {
     // Archive + Delete
     const tdDel = document.createElement('td');
     tdDel.className = 'actions-cell';
+    const inTimeline = Boolean(Config.getTimelineEntry(ch.id));
+    const btnTl = document.createElement('button');
+    btnTl.className = `btn btn-sm${inTimeline ? ' in-timeline' : ''}`;
+    btnTl.textContent = '🗓';
+    btnTl.title = inTimeline ? 'Modifier le planning timeline' : 'Ajouter à la timeline';
+    btnTl.addEventListener('click', () => openTimelineModal(ch));
+    tdDel.appendChild(btnTl);
     const btnArch = document.createElement('button');
     btnArch.className = 'btn btn-sm';
     btnArch.textContent = '🗃';
@@ -1271,10 +1601,21 @@ function init() {
   // Navigation between dashboard and stats views.
   $('navDashboard').addEventListener('click', () => showView('dashboard'));
   $('navStats').addEventListener('click', () => showView('stats'));
+  $('navTimeline').addEventListener('click', () => showView('timeline'));
   $('statsClientSelector').addEventListener('change', (e) => {
     statsClient = e.target.value;
     renderStats();
   });
+  $('timelineClientSelector').addEventListener('change', (e) => {
+    timelineClient = e.target.value;
+    renderTimeline();
+  });
+  $('tlPrev').addEventListener('click', () => tlScrollBy(-QUARTER_W));
+  $('tlNext').addEventListener('click', () => tlScrollBy(QUARTER_W));
+  $('tlToday').addEventListener('click', tlGoToday);
+  $('btnTlSave').addEventListener('click', saveTimelineEntry);
+  $('btnTlRemove').addEventListener('click', removeFromTimeline);
+  $('btnTlClose').addEventListener('click', () => closeModal('timelineModal'));
 
   document.querySelector('#chiffrageTable thead').addEventListener('click', (e) => {
     const th = e.target.closest('th[data-sort]');
