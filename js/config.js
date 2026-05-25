@@ -1,19 +1,36 @@
 const STORAGE_KEY = 'chiffragemax.config';
 const CLIENTS_KEY = 'chiffragemax.clients';
 
-const DEFAULTS = {
-  clientId: '',
+// --- Baked-in defaults (shipped in the app) ---------------------------------
+// These let colleagues use the app without configuring anything. They are NOT
+// secrets: a web OAuth Client ID is public by design (it travels in plaintext
+// in every OAuth request), and a Sheet ID is just a file identifier. Access is
+// still gated by Google sign-in and by who the template Sheet is shared with.
+// Users can override either value in ⚙️ Configuration; their entry wins.
+const BAKED = {
+  clientId: '557845598051-fkvj620tspj1oalgd9j7sa8avadqli00.apps.googleusercontent.com',
+  // Paste your ModeleChiffrage Sheet ID (or full URL) here to ship it as the
+  // default template, e.g. '1AbC...xyz'. Leave empty to require manual entry.
   templateId: '',
+};
+
+const DEFAULTS = {
+  clientId: BAKED.clientId,
+  templateId: BAKED.templateId,
   rootFolderId: '',
 };
 
 export const Config = {
   load() {
+    let stored = {};
     try {
-      return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') };
-    } catch {
-      return { ...DEFAULTS };
-    }
+      stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    } catch { /* malformed — fall back to defaults */ }
+    const cfg = { ...DEFAULTS, ...stored };
+    // A blank stored value must not erase a baked-in default.
+    if (!cfg.clientId)   cfg.clientId   = DEFAULTS.clientId;
+    if (!cfg.templateId) cfg.templateId = DEFAULTS.templateId;
+    return cfg;
   },
 
   save(cfg) {

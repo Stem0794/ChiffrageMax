@@ -31,9 +31,9 @@
       <p class="login-desc">Gérez vos chiffrages directement depuis Google Drive.<br>Aucune donnée ne transite par un serveur externe.</p>
       <button id="btnSignIn" class="btn btn-primary btn-lg">Se connecter avec Google</button>
       <p class="login-hint">
-        Vos identifiants OAuth sont stockés <strong>uniquement dans votre navigateur</strong> (localStorage).<br>
-        Aucun secret n'est présent dans le code source public.
-        Configurez votre Client ID via <button id="openSettingsFromLogin" class="link-btn">⚙️ Configuration</button>.
+        Connectez-vous avec votre compte Google : aucune configuration n'est requise.<br>
+        Aucun secret n'est présent dans le code source public. Vos préférences restent <strong>locales à votre navigateur</strong> (localStorage).
+        Personnalisez si besoin via <button id="openSettingsFromLogin" class="link-btn">⚙️ Configuration</button>.
       </p>
     </div>
   </div>
@@ -128,7 +128,7 @@
       <h2>⚙️ Configuration</h2>
       <label>OAuth Client ID Google
         <input id="cfgClientId" type="text" placeholder="xxxxx.apps.googleusercontent.com" />
-        <span class="field-hint">Créez des identifiants OAuth 2.0 (type : application Web) dans la Google Cloud Console. Ajoutez l'URL de cette page aux origines JavaScript autorisées.</span>
+        <span class="field-hint">Pré-rempli avec l'identifiant embarqué dans l'app : laissez tel quel pour démarrer. Surchargez-le uniquement si vous utilisez votre propre projet Google Cloud (pensez alors à ajouter l'URL de cette page aux origines JavaScript autorisées).</span>
       </label>
       <label>ID du modèle (fichier ModeleChiffrage)
         <input id="cfgTemplateId" type="text" placeholder="ID ou URL du Google Sheet modèle" />

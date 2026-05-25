@@ -4,7 +4,7 @@ Application web (SPA) **100 % frontend** pour gérer des chiffrages de projets, 
 
 L'application lit et écrit directement dans **Google Sheets** et **Google Drive** via leurs API REST, avec authentification **OAuth** par Google Identity Services (GIS).
 
-> **Sécurité** : aucun secret n'est stocké dans le dépôt. L'OAuth Client ID est saisi par l'utilisateur et conservé **uniquement dans le navigateur** (localStorage). Le reste de la configuration (modèle, dossiers, clients, TJM) est synchronisé dans votre Drive personnel.
+> **Sécurité** : aucun secret au sens strict n'est stocké dans le dépôt. L'**OAuth Client ID** d'une application Web n'est *pas* un secret (il circule en clair dans chaque requête OAuth) : il est désormais **embarqué dans l'app** pour permettre un partage immédiat avec vos collègues, sans configuration. L'accès reste protégé par la connexion Google de chacun. Chaque utilisateur peut tout de même **surcharger** le Client ID (et l'ID du modèle) via ⚙️ Configuration ; sa valeur prime et reste **locale au navigateur** (localStorage). Le reste (modèle, dossiers, clients, TJM) est synchronisé dans votre Drive personnel.
 
 ## Fonctionnalités
 
@@ -41,12 +41,14 @@ Onglet dédié, accessible via le menu de navigation, avec graphiques SVG (sans 
 
 ## Configuration de l'application
 
-Ouvrez l'application, connectez-vous, puis cliquez sur ⚙️ et renseignez :
+Le **Client ID OAuth** et (optionnellement) l'**ID du modèle** sont embarqués dans l'app — vos collègues n'ont donc **rien à configurer** pour démarrer : ils se connectent avec leur compte Google et c'est tout. Pour personnaliser, ouvrez ⚙️ et renseignez :
 
-- **OAuth Client ID** : l'identifiant créé ci-dessus (stocké uniquement dans le navigateur).
-- **ID du modèle** : l'ID ou l'URL du Google Sheet servant de modèle (`ModeleChiffrage`/`Chiffrage`). Partagez-le en lecture avec votre compte.
+- **OAuth Client ID** : pré-rempli avec la valeur embarquée. Surchargez-le seulement si vous utilisez votre propre projet Google Cloud.
+- **ID du modèle** : l'ID ou l'URL du Google Sheet servant de modèle (`ModeleChiffrage`/`Chiffrage`). S'il est embarqué dans l'app, partagez-le en lecture avec les comptes Google de vos collègues.
 - **Dossier Drive racine (fallback)** : utilisé si un client n'a pas de dossier propre.
 - **Clients** : pour chaque client, un nom et un dossier Drive racine. Le bouton 💰 permet de configurer les rôles et TJM par client.
+
+> Pour embarquer votre propre modèle, collez son ID dans la constante `BAKED.templateId` de `js/config.js`. Pour changer le Client ID embarqué, modifiez `BAKED.clientId` dans le même fichier.
 
 La configuration (modèle, dossiers, clients, rôles/TJM) est sauvegardée dans un fichier `ChiffrageMax-Config.json` de votre Drive, donc partagée entre vos appareils. Le Client ID, lui, reste local au navigateur.
 
