@@ -650,20 +650,23 @@ label input, label select, .input-full {
 .btn.in-timeline { background: #14331f; border-color: #1f7a45; }
 
 /* Timeline edit modal */
-.tl-phase-rows { display: flex; flex-direction: column; gap: 10px; }
+.tl-phase-rows { display: flex; flex-direction: column; gap: 8px; }
 .tl-phase-row {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 18px 130px 1fr 1fr;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 14px;
   background: var(--panel-alt); border: 1px solid var(--border); border-radius: var(--radius);
 }
-.tl-phase-swatch { width: 14px; height: 14px; border-radius: 4px; flex: 0 0 auto; }
-.tl-phase-name { font-size: 13px; font-weight: 600; min-width: 110px; flex: 0 0 auto; }
+.tl-phase-swatch { width: 14px; height: 14px; border-radius: 4px; }
+.tl-phase-name { font-size: 13px; font-weight: 600; }
 .tl-phase-row .tl-phase-field {
-  display: flex; flex-direction: column; gap: 3px;
+  display: flex; flex-direction: column; gap: 4px;
   margin-bottom: 0;
-  font-size: 11px; color: var(--muted);
+  font-size: 12px; color: var(--muted);
 }
-.tl-phase-row .tl-phase-field input { margin-top: 0; width: auto; display: block; }
+.tl-phase-row .tl-phase-field input { margin-top: 0; width: 100%; display: block; }
 
 /* ---- Scrollbar ---- */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
