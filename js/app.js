@@ -118,6 +118,7 @@ function showApp(signedIn) {
 Auth.onChange(async (signedIn) => {
   if (!signedIn) {
     DriveConfig.reset();
+    clearStoredDashboard();
     showApp(false);
     return;
   }
@@ -182,25 +183,40 @@ function hideProgress() {
 async function loadDashboard() {
   if (!Auth.isSignedIn()) return;
   showGlobalError('');
-  dashboardLoading = true;
-  chiffrages = [];
-  renderTable();
+
+  // Show stale data immediately — perceived load is instant.
+  const stored = loadStoredDashboard();
+  if (stored?.length) {
+    chiffrages = stored;
+    dashboardLoading = false;
+    renderFilters();
+    renderTable();
+  } else {
+    dashboardLoading = true;
+    chiffrages = [];
+    renderTable();
+  }
+
   showProgress(0, 0);
-  busy($('btnRefresh'), true, 'Chargement…');
+  busy($('btnRefresh'), true, stored?.length ? 'Actualisation…' : 'Chargement…');
   try {
-    await listChiffrages(
+    const allFresh = await listChiffrages(
       (batch, clientLabel) => {
         for (const ch of batch) {
-          if (!chiffrages.some((c) => c.id === ch.id)) chiffrages.push(ch);
+          const idx = chiffrages.findIndex((c) => c.id === ch.id);
+          if (idx >= 0) chiffrages[idx] = ch; // update stale entry in place
+          else chiffrages.push(ch);
         }
         busy($('btnRefresh'), true, `${clientLabel} — ${chiffrages.length} chargé${chiffrages.length > 1 ? 's' : ''}`);
+        renderFilters();
         renderTable();
       },
-      {
-        onProgress: (loaded, total) => showProgress(loaded, total),
-      },
+      { onProgress: (loaded, total) => showProgress(loaded, total) },
     );
+    // Replace with authoritative list — removes files deleted or archived since last load.
+    chiffrages = allFresh;
     dashboardLoading = false;
+    storeDashboard(chiffrages);
     renderFilters();
     renderTable();
   } catch (e) {
@@ -245,6 +261,63 @@ function renderFilters() {
     });
     pillsEl.appendChild(pill);
   });
+}
+
+/* ---- Summary bar ---- */
+const STATUS_DISPLAY_LABELS = {
+  '': 'Non envoyé', 'Envoyé': 'Envoyé', 'Validé': 'Validé',
+  'Passé en TMA': 'Passé en TMA', 'Refusé': 'Refusé', 'Annulé': 'Annulé',
+};
+
+function renderSummary() {
+  const bar = $('summaryBar');
+  const visible = visibleChiffrages();
+  if (!visible.length) { bar.classList.add('hidden'); return; }
+
+  const groups = {};
+  let grandCount = 0; let grandMontant = 0;
+  for (const ch of visible) {
+    const s = ch.status || '';
+    if (!groups[s]) groups[s] = { count: 0, montant: 0 };
+    groups[s].count++;
+    const m = typeof ch.montant === 'number' ? ch.montant : 0;
+    groups[s].montant += m;
+    grandCount++;
+    grandMontant += m;
+  }
+
+  bar.innerHTML = '';
+  bar.classList.remove('hidden');
+
+  const makeChip = (label, count, montant, style) => {
+    const chip = document.createElement('div');
+    chip.className = 'summary-chip';
+    if (style) { chip.style.background = style.bg; chip.style.color = style.color; }
+    const lbl = document.createElement('span');
+    lbl.className = 'summary-chip-label';
+    lbl.textContent = label;
+    chip.appendChild(lbl);
+    const cnt = document.createElement('span');
+    cnt.className = 'summary-chip-count';
+    cnt.textContent = count;
+    chip.appendChild(cnt);
+    if (montant > 0) {
+      const amt = document.createElement('span');
+      amt.className = 'summary-chip-amount';
+      amt.textContent = formatMontant(montant);
+      chip.appendChild(amt);
+    }
+    return chip;
+  };
+
+  for (const s of STATUS_OPTIONS) {
+    const g = groups[s];
+    if (!g) continue;
+    bar.appendChild(makeChip(STATUS_DISPLAY_LABELS[s] ?? s, g.count, g.montant, STATUS_STYLES[s]));
+  }
+  const totalChip = makeChip('Total', grandCount, grandMontant, null);
+  totalChip.classList.add('summary-chip--total');
+  bar.appendChild(totalChip);
 }
 
 /* ---- Sort ---- */
@@ -302,6 +375,7 @@ function visibleChiffrages() {
 
 /* ---- Table rendering ---- */
 function renderTable() {
+  renderSummary();
   updateSortHeaders();
   const body = $('chiffrageBody');
   body.innerHTML = '';
@@ -382,12 +456,19 @@ function renderTable() {
     tdMontant.addEventListener('click', () => refreshMontant(ch, tdMontant));
     tr.appendChild(tdMontant);
 
-    // Delete
+    // Archive + Delete
     const tdDel = document.createElement('td');
+    tdDel.className = 'actions-cell';
+    const btnArch = document.createElement('button');
+    btnArch.className = 'btn btn-sm';
+    btnArch.textContent = '🗃';
+    btnArch.title = 'Archiver (masquer du tableau de bord)';
+    btnArch.addEventListener('click', () => onArchiveChiffrage(ch, btnArch));
+    tdDel.appendChild(btnArch);
     const btnDel = document.createElement('button');
     btnDel.className = 'btn btn-sm btn-delete';
     btnDel.textContent = '🗑';
-    btnDel.title = 'Supprimer ce chiffrage (Google Sheet)';
+    btnDel.title = 'Supprimer définitivement ce chiffrage (Google Sheet)';
     btnDel.addEventListener('click', () => onDeleteChiffrage(ch, btnDel));
     tdDel.appendChild(btnDel);
     tr.appendChild(tdDel);
@@ -419,6 +500,27 @@ async function refreshMontant(ch, td) {
     td.textContent = prev;
     toast(e.message, 'error');
   }
+}
+
+/* ---- Dashboard persistence (stale-while-revalidate) ---- */
+const DASHBOARD_STORE_KEY = 'chiffragemax.dashboard';
+
+function loadStoredDashboard() {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_STORE_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    return Array.isArray(d) ? d : null;
+  } catch { return null; }
+}
+
+function storeDashboard(data) {
+  try { localStorage.setItem(DASHBOARD_STORE_KEY, JSON.stringify(data)); }
+  catch { try { localStorage.removeItem(DASHBOARD_STORE_KEY); } catch {} }
+}
+
+function clearStoredDashboard() {
+  try { localStorage.removeItem(DASHBOARD_STORE_KEY); } catch {}
 }
 
 // Re-fetch totals for the currently visible chiffrages (on tab refocus).
@@ -668,6 +770,22 @@ async function onStatusChange(ch, newValue, select) {
   }
 }
 
+/* ---- Archive chiffrage ---- */
+async function onArchiveChiffrage(ch, btn) {
+  busy(btn, true);
+  try {
+    const newName = ch.name.includes('[ARCH]') ? ch.name : `${ch.name} [ARCH]`;
+    await DriveAPI.renameFile(ch.id, newName);
+    chiffrages = chiffrages.filter((c) => c.id !== ch.id);
+    storeDashboard(chiffrages);
+    renderTable();
+    toast('Chiffrage archivé.', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+    busy(btn, false);
+  }
+}
+
 /* ---- Delete chiffrage ---- */
 async function onDeleteChiffrage(ch, btn) {
   const label = ch.projet ? `« ${ch.projet} »` : ch.name;
@@ -684,6 +802,7 @@ async function onDeleteChiffrage(ch, btn) {
     }
   }
   chiffrages = chiffrages.filter((c) => c.id !== ch.id);
+  storeDashboard(chiffrages);
   renderTable();
   toast('Chiffrage supprimé.', 'success');
 }
@@ -801,6 +920,7 @@ async function createChiffrage() {
     try {
       const ch = await readChiffrageFile({ id: created.id, name: created.idChiffrage, webViewLink: created.url });
       if (!chiffrages.some((c) => c.id === ch.id)) chiffrages.push(ch);
+      storeDashboard(chiffrages);
       renderTable();
     } catch {
       await loadDashboard();

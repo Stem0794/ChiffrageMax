@@ -94,6 +94,36 @@ a:visited { color: #a18aff; }
 }
 .status-pill:hover { border-color: var(--primary); color: var(--ink); }
 
+/* ---- Summary bar ---- */
+.summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  background: var(--panel);
+}
+.summary-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.summary-chip-label { font-weight: 500; opacity: .85; }
+.summary-chip-count { font-weight: 700; font-size: 13px; }
+.summary-chip-amount { font-weight: 600; opacity: .9; }
+.summary-chip--total {
+  margin-left: auto;
+  background: var(--panel-alt) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--border);
+}
+.actions-cell { display: flex; gap: 4px; align-items: center; }
+
 /* ---- Loading progress bar ---- */
 .loading-progress {
   display: flex;
