@@ -283,8 +283,8 @@ function visibleChiffrages() {
   return [...list].sort((a, b) => {
     let va, vb;
     if (sortField === 'montant') {
-      va = typeof a.montant === 'number' ? a.montant : parseFloat(String(a.montant || '').replace(',', '.')) || 0;
-      vb = typeof b.montant === 'number' ? b.montant : parseFloat(String(b.montant || '').replace(',', '.')) || 0;
+      va = typeof a.montant === 'number' ? a.montant : Number(a.montant) || 0;
+      vb = typeof b.montant === 'number' ? b.montant : Number(b.montant) || 0;
     } else if (sortField === 'date') {
       va = parseDate(a.date);
       vb = parseDate(b.date);
@@ -401,7 +401,7 @@ function cell(value) {
 }
 
 function formatMontant(v) {
-  const n = typeof v === 'number' ? v : parseFloat(String(v || '').replace(',', '.'));
+  const n = typeof v === 'number' ? v : Number(v);
   if (!Number.isFinite(n) || n === 0) return '—';
   return n.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' €';
 }

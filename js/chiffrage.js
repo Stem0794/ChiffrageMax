@@ -422,7 +422,32 @@ function extractMontant(data) {
 function parseAmount(val) {
   if (typeof val === 'number') return val;
   if (val == null) return 0;
-  const n = parseFloat(String(val).replace(/[^\d.,-]/g, '').replace(/\s/g, '').replace(',', '.'));
+  // Strip currency symbols and whitespace, keep digits and separators only.
+  let s = String(val).replace(/[€$£%\s]/g, '').replace(/[^\d.,]/g, '');
+  if (!s) return 0;
+
+  const commas  = (s.match(/,/g) || []).length;
+  const periods = (s.match(/\./g) || []).length;
+
+  if (commas > 0 && periods > 0) {
+    // Both present — whichever comes last is the decimal separator.
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+      s = s.replace(/\./g, '').replace(',', '.'); // "1.012,50" → 1012.50
+    } else {
+      s = s.replace(/,/g, '');                    // "1,012.50" → 1012.50
+    }
+  } else if (commas > 1) {
+    s = s.replace(/,/g, '');                      // "1,012,345" → 1012345
+  } else if (periods > 1) {
+    s = s.replace(/\./g, '');                     // "1.012.345" → 1012345
+  } else if (commas === 1) {
+    // Single comma: 3 digits after → thousands separator; otherwise decimal.
+    const after = s.slice(s.indexOf(',') + 1);
+    s = after.length === 3 ? s.replace(',', '') : s.replace(',', '.');
+  }
+  // Single period: standard decimal — no change needed.
+
+  const n = parseFloat(s);
   return Number.isFinite(n) ? n : 0;
 }
 
