@@ -115,6 +115,7 @@ a:visited { color: #a18aff; }
 }
 .summary-chip-label { font-weight: 500; opacity: .85; }
 .summary-chip-count { font-weight: 700; font-size: 13px; }
+.summary-chip-sep { opacity: .45; }
 .summary-chip-amount { font-weight: 600; opacity: .9; }
 .summary-chip--total {
   margin-left: auto;

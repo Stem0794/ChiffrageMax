@@ -302,6 +302,10 @@ function renderSummary() {
     cnt.textContent = count;
     chip.appendChild(cnt);
     if (montant > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'summary-chip-sep';
+      sep.textContent = '·';
+      chip.appendChild(sep);
       const amt = document.createElement('span');
       amt.className = 'summary-chip-amount';
       amt.textContent = formatMontant(montant);
