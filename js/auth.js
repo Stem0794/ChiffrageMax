@@ -5,6 +5,8 @@ const SCOPES = [
   'https://www.googleapis.com/auth/drive',
 ].join(' ');
 
+const STORAGE_KEY = 'chiffragemax.token';
+
 let tokenClient = null;
 let accessToken = null;
 let tokenExpiry = 0;
@@ -13,6 +15,34 @@ const listeners = new Set();
 function notify() {
   for (const fn of listeners) fn(Boolean(accessToken));
 }
+
+// Persist the token so the session survives a browser restart (within its
+// ~1h lifetime). It's short-lived; after expiry getToken() refreshes silently.
+function persistToken() {
+  try {
+    if (accessToken && Date.now() < tokenExpiry) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ accessToken, tokenExpiry }));
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch { /* storage unavailable — degrade to in-memory only */ }
+}
+
+function restoreToken() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const { accessToken: tok, tokenExpiry: exp } = JSON.parse(raw);
+    if (tok && typeof exp === 'number' && Date.now() < exp) {
+      accessToken = tok;
+      tokenExpiry = exp;
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch { /* ignore malformed/unavailable storage */ }
+}
+
+restoreToken();
 
 function ensureClient() {
   const clientId = Config.get('clientId');
@@ -41,6 +71,7 @@ function requestToken({ prompt } = {}) {
       }
       accessToken = resp.access_token;
       tokenExpiry = Date.now() + (Number(resp.expires_in) - 60) * 1000;
+      persistToken();
       notify();
       resolve(accessToken);
     };
@@ -72,6 +103,7 @@ export const Auth = {
     }
     accessToken = null;
     tokenExpiry = 0;
+    persistToken();
     notify();
   },
 
