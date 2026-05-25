@@ -7,26 +7,29 @@ const DRIVE = 'https://www.googleapis.com/drive/v3/files';
 // Google Workspace Shared Drive (otherwise Drive returns 404).
 const DRIVE_SHARED = 'supportsAllDrives=true&includeItemsFromAllDrives=true';
 
-// Proactive rate limiter: the Sheets API allows ~60 read requests/min/user.
-// We cap below that and let short bursts through, then pace the rest, so we
-// stop firing faster than the quota instead of relying on reactive backoff.
+// Proactive rate limiter. The Sheets API enforces separate ~60/min/user quotas
+// for reads and writes, so we track them in independent buckets — otherwise a
+// user-initiated write (e.g. editing a cell) would needlessly queue behind a
+// dashboard scan's reads and could wait nearly a full minute. We cap each
+// bucket below quota, let short bursts through, then pace the rest.
 const RATE_LIMIT = 50;
 const RATE_WINDOW = 60000;
-let reqTimes = [];
-async function rateLimit() {
+const reqTimes = { read: [], write: [] };
+async function rateLimit(bucket) {
   for (;;) {
     const now = Date.now();
-    reqTimes = reqTimes.filter((t) => now - t < RATE_WINDOW);
-    if (reqTimes.length < RATE_LIMIT) {
-      reqTimes.push(now);
+    reqTimes[bucket] = reqTimes[bucket].filter((t) => now - t < RATE_WINDOW);
+    if (reqTimes[bucket].length < RATE_LIMIT) {
+      reqTimes[bucket].push(now);
       return;
     }
-    await new Promise((r) => setTimeout(r, RATE_WINDOW - (now - reqTimes[0]) + 50));
+    await new Promise((r) => setTimeout(r, RATE_WINDOW - (now - reqTimes[bucket][0]) + 50));
   }
 }
 
 async function gfetch(url, options = {}, { retryOn401 = true, attempt = 0 } = {}) {
-  await rateLimit();
+  const method = (options.method || 'GET').toUpperCase();
+  await rateLimit(method === 'GET' ? 'read' : 'write');
   const token = await Auth.getToken();
   const res = await fetch(url, {
     ...options,
