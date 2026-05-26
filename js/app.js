@@ -3,7 +3,7 @@ import { Auth } from './auth.js';
 import { DriveConfig } from './drive-config.js';
 import { SheetsAPI, DriveAPI } from './api.js';
 import {
-  nouveauChiffrage, listChiffrages, readChiffrageFile, readChiffrageMontant,
+  nouveauChiffrage, listChiffrages, listArchivedChiffrages, readChiffrageFile, readChiffrageMontant,
   setChiffrageStatus, deleteChiffrage, resolveMonthFolder, STATUS_OPTIONS,
 } from './chiffrage.js';
 import { extractSpreadsheetId, extractFolderId, cleanProjectName } from './utils.js';
@@ -16,6 +16,13 @@ let filterStatuses = new Set();
 let sortField = 'date';
 let sortAsc = false;
 let dashboardLoading = false;
+
+// Archived view — loaded lazily (only when the "Archivés" filter is opened) so
+// the initial dashboard scan never touches [ARCH] files.
+let showArchived = false;
+let archivedChiffrages = [];
+let archivedLoaded = false;
+let archivedLoading = false;
 
 /* ---- Roles ---- */
 const DEFAULT_ROLES = [
@@ -188,6 +195,11 @@ async function loadDashboard() {
   if (!Auth.isSignedIn()) return;
   showGlobalError('');
 
+  // A full scan invalidates the lazily-loaded archived set; refresh it only if
+  // the archived view is currently open.
+  archivedLoaded = false;
+  if (showArchived) loadArchivedChiffrages();
+
   // Show stale data immediately — perceived load is instant.
   const stored = loadStoredDashboard();
   if (stored?.length) {
@@ -241,16 +253,21 @@ function renderFilters() {
 
   const allPill = document.createElement('button');
   allPill.type = 'button';
-  allPill.className = `status-pill${filterStatuses.size === 0 ? ' active' : ''}`;
+  allPill.className = `status-pill${!showArchived && filterStatuses.size === 0 ? ' active' : ''}`;
   allPill.textContent = 'Tous';
-  allPill.addEventListener('click', () => { filterStatuses.clear(); renderFilters(); renderTable(); });
+  allPill.addEventListener('click', () => {
+    filterStatuses.clear();
+    showArchived = false;
+    renderFilters();
+    renderTable();
+  });
   pillsEl.appendChild(allPill);
 
   STATUS_OPTIONS.filter((s) => s).forEach((s) => {
     const pill = document.createElement('button');
     pill.type = 'button';
     const st = STATUS_STYLES[s];
-    const active = filterStatuses.has(s);
+    const active = !showArchived && filterStatuses.has(s);
     pill.className = `status-pill${active ? ' active' : ''}`;
     if (active && st) {
       pill.style.background = st.bg;
@@ -259,6 +276,7 @@ function renderFilters() {
     }
     pill.textContent = s;
     pill.addEventListener('click', () => {
+      showArchived = false;
       if (filterStatuses.has(s)) filterStatuses.delete(s);
       else filterStatuses.add(s);
       renderFilters();
@@ -266,6 +284,62 @@ function renderFilters() {
     });
     pillsEl.appendChild(pill);
   });
+
+  // Archived filter — mutually exclusive with the status filters above. The
+  // [ARCH] scan only fires the first time it's opened (lazy load).
+  const archPill = document.createElement('button');
+  archPill.type = 'button';
+  archPill.className = `status-pill${showArchived ? ' active' : ''}`;
+  if (showArchived) {
+    archPill.style.background = '#374151';
+    archPill.style.color = '#d1d5db';
+    archPill.style.borderColor = '#374151';
+  }
+  archPill.textContent = archivedLoading ? '⏳ Archivés…' : '🗃 Archivés';
+  archPill.addEventListener('click', () => {
+    if (showArchived) {
+      showArchived = false;
+      renderFilters();
+      renderTable();
+      return;
+    }
+    showArchived = true;
+    filterStatuses.clear();
+    renderFilters();
+    renderTable();
+    loadArchivedChiffrages();
+  });
+  pillsEl.appendChild(archPill);
+}
+
+async function loadArchivedChiffrages() {
+  if (archivedLoaded || archivedLoading || !Auth.isSignedIn()) return;
+  archivedLoading = true;
+  showGlobalError('');
+  renderFilters();
+  showProgress(0, 0);
+  try {
+    const all = await listArchivedChiffrages(
+      (batch) => {
+        for (const ch of batch) {
+          const idx = archivedChiffrages.findIndex((c) => c.id === ch.id);
+          if (idx >= 0) archivedChiffrages[idx] = ch;
+          else archivedChiffrages.push(ch);
+        }
+        if (showArchived) renderTable();
+      },
+      { onProgress: (loaded, total) => showProgress(loaded, total) },
+    );
+    archivedChiffrages = all;
+    archivedLoaded = true;
+  } catch (e) {
+    showGlobalError(e.message);
+  } finally {
+    archivedLoading = false;
+    hideProgress();
+    renderFilters();
+    if (showArchived) renderTable();
+  }
 }
 
 /* ---- Stats page ---- */
@@ -1086,14 +1160,15 @@ function parseDate(str) {
 }
 
 function visibleChiffrages() {
-  let list = chiffrages;
+  let list = showArchived ? archivedChiffrages : chiffrages;
 
   if (selectedClient) {
     const key = selectedClient.trim().toLowerCase();
     list = list.filter((c) => (c.client || '').trim().toLowerCase() === key);
   }
 
-  if (filterStatuses.size > 0) {
+  // Status filters don't apply to the archived view — "Archivés" is its own scope.
+  if (!showArchived && filterStatuses.size > 0) {
     list = list.filter((c) => filterStatuses.has(c.status || ''));
   }
 
@@ -1124,7 +1199,13 @@ function renderTable() {
 
   if (!visible.length) {
     let msg;
-    if (dashboardLoading) {
+    if (showArchived && archivedLoading) {
+      msg = 'Chargement des chiffrages archivés…';
+    } else if (showArchived && selectedClient) {
+      msg = `Aucun chiffrage archivé pour « ${escHtml(selectedClient)} ».`;
+    } else if (showArchived) {
+      msg = 'Aucun chiffrage archivé.';
+    } else if (dashboardLoading) {
       msg = 'Chargement en cours…';
     } else if (selectedClient) {
       msg = `Aucun chiffrage trouvé pour « ${escHtml(selectedClient)} ».`;
@@ -1207,12 +1288,21 @@ function renderTable() {
     btnTl.title = inTimeline ? 'Modifier le planning timeline' : 'Ajouter à la timeline';
     btnTl.addEventListener('click', () => openTimelineModal(ch));
     tdDel.appendChild(btnTl);
-    const btnArch = document.createElement('button');
-    btnArch.className = 'btn btn-sm';
-    btnArch.textContent = '🗃';
-    btnArch.title = 'Archiver (masquer du tableau de bord)';
-    btnArch.addEventListener('click', () => onArchiveChiffrage(ch, btnArch));
-    tdDel.appendChild(btnArch);
+    if (showArchived) {
+      const btnUnarch = document.createElement('button');
+      btnUnarch.className = 'btn btn-sm';
+      btnUnarch.textContent = '📤';
+      btnUnarch.title = 'Désarchiver (remettre dans le tableau de bord)';
+      btnUnarch.addEventListener('click', () => onUnarchiveChiffrage(ch, btnUnarch));
+      tdDel.appendChild(btnUnarch);
+    } else {
+      const btnArch = document.createElement('button');
+      btnArch.className = 'btn btn-sm';
+      btnArch.textContent = '🗃';
+      btnArch.title = 'Archiver (masquer du tableau de bord)';
+      btnArch.addEventListener('click', () => onArchiveChiffrage(ch, btnArch));
+      tdDel.appendChild(btnArch);
+    }
     const btnDel = document.createElement('button');
     btnDel.className = 'btn btn-sm btn-delete';
     btnDel.textContent = '🗑';
@@ -1526,8 +1616,29 @@ async function onArchiveChiffrage(ch, btn) {
     await DriveAPI.renameFile(ch.id, newName);
     chiffrages = chiffrages.filter((c) => c.id !== ch.id);
     storeDashboard(chiffrages);
+    // The archived set is now stale — force a rescan next time it's opened.
+    archivedLoaded = false;
     renderTable();
     toast('Chiffrage archivé.', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+    busy(btn, false);
+  }
+}
+
+/* ---- Unarchive chiffrage ---- */
+async function onUnarchiveChiffrage(ch, btn) {
+  busy(btn, true);
+  try {
+    const newName = ch.name.replace(/\s*\[ARCH\]/g, '').trim();
+    await DriveAPI.renameFile(ch.id, newName);
+    ch.name = newName;
+    archivedChiffrages = archivedChiffrages.filter((c) => c.id !== ch.id);
+    // Surface it in the normal dashboard immediately.
+    if (!chiffrages.some((c) => c.id === ch.id)) chiffrages.push(ch);
+    storeDashboard(chiffrages);
+    renderTable();
+    toast('Chiffrage désarchivé.', 'success');
   } catch (e) {
     toast(e.message, 'error');
     busy(btn, false);

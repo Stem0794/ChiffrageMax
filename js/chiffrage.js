@@ -440,6 +440,32 @@ async function collectChiffrageFiles(folderIds) {
   return found;
 }
 
+// Like collectChiffrageFiles but only returns [ARCH] files.
+async function collectArchivedFiles(folderIds) {
+  const found = [];
+  const seen = new Set();
+
+  async function walk(folderId) {
+    if (!folderId || seen.has(folderId)) return;
+    seen.add(folderId);
+    const children = await DriveAPI.listChildren(folderId);
+    for (const f of children) {
+      if (f.mimeType === 'application/vnd.google-apps.folder') {
+        await walk(f.id);
+      } else if (
+        f.mimeType === 'application/vnd.google-apps.spreadsheet'
+        && f.name.startsWith('CHI-')
+        && f.name.includes('[ARCH]')
+      ) {
+        found.push(f);
+      }
+    }
+  }
+
+  for (const id of folderIds) await walk(id);
+  return found;
+}
+
 // Read one chiffrage file: header (C1:C5), validation status, total.
 // Returns cached data immediately if the file's modifiedTime hasn't changed
 // (zero Sheets API calls). Otherwise makes one getGrid call and caches result.
@@ -600,6 +626,60 @@ export async function listChiffrages(onBatch, { onProgress } = {}) {
   }
 
   _pruneCache(seenIds);
+  return allResults;
+}
+
+// List archived ([ARCH]) chiffrages on demand. Mirrors listChiffrages but scans
+// only [ARCH] files and never prunes the cache (the normal scan owns pruning).
+// Intended to be called lazily — only when the user opens the "Archivés" filter.
+export async function listArchivedChiffrages(onBatch, { onProgress } = {}) {
+  const clients = Config.getClients().filter((c) => c.folderId);
+  const rootId = Config.get('rootFolderId');
+  const clientFolderIds = new Set(clients.map((c) => c.folderId));
+  const allResults = [];
+  const seenIds = new Set();
+
+  const CONCURRENCY = 4;
+
+  let totalKnown = 0;
+  let totalLoaded = 0;
+
+  const processFolder = async (folderId, label) => {
+    const files = (await collectArchivedFiles([folderId])).filter((f) => {
+      if (seenIds.has(f.id)) return false;
+      seenIds.add(f.id);
+      return true;
+    });
+    totalKnown += files.length;
+    onProgress?.(totalLoaded, totalKnown);
+
+    const batch = [];
+    let idx = 0;
+    const worker = async () => {
+      while (idx < files.length) {
+        const file = files[idx++];
+        try {
+          const ch = await readChiffrageFile(file);
+          allResults.push(ch);
+          batch.push(ch);
+        } catch (e) {
+          console.warn(`Impossible de lire ${file.name} :`, e.message);
+        }
+        totalLoaded++;
+        onProgress?.(totalLoaded, totalKnown);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, files.length || 1) }, worker));
+    if (batch.length) onBatch?.(batch, label);
+  };
+
+  for (const client of clients) {
+    await processFolder(client.folderId, client.name);
+  }
+  if (rootId && !clientFolderIds.has(rootId)) {
+    await processFolder(rootId, 'Racine');
+  }
+
   return allResults;
 }
 
