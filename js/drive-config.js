@@ -13,7 +13,10 @@ export const DriveConfig = {
   reset() { this._fileId = null; },
 
   setSharedConfigId(id) {
-    this._sharedId = id || null;
+    // Accept a pasted Drive URL (…/d/<id>/view) as well as a bare file ID —
+    // otherwise the full URL gets used as the ID and every Drive call 404s.
+    const m = id && String(id).match(/\/d\/([a-zA-Z0-9_-]+)/);
+    this._sharedId = (m ? m[1] : id) || null;
     this._fileId = null; // force re-resolution on next operation
   },
 

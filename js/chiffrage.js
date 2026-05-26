@@ -509,7 +509,7 @@ export async function readChiffrageFile(file) {
     client: cell(0, 2), // C1
     projet: cell(1, 2), // C2
     ticket: cell(2, 2), // C3
-    date: cell(3, 2), // C4
+    date: (() => { const r = cell(3, 2); const m = r.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}/${m[2]}/${m[1]}` : r; })(), // C4
     numDevis: cell(4, 2), // C5
     status,
     statusRow,

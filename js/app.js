@@ -825,15 +825,20 @@ function renderTlPhaseRows(phases) {
   const rows = c.querySelectorAll('.tl-phase-row');
   rows.forEach((row, idx) => {
     row.querySelector('.tl-end').addEventListener('change', (e) => {
+      // Native date inputs can fire `change` mid-edit while the year segment is
+      // still partial (e.g. "0002" before "2026" is finished typing). Only
+      // propagate a complete, sane date so the next field isn't seeded garbage.
+      const v = e.target.value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || Number(v.slice(0, 4)) < 1900) return;
       if (idx + 1 < rows.length) {
         const nextStart = rows[idx + 1].querySelector('.tl-start');
-        if (!nextStart.value) nextStart.value = e.target.value;
+        if (!nextStart.value) nextStart.value = v;
       }
     });
   });
-  // Paste normalisation: accept dd/mm/yyyy, mm/dd/yyyy or yyyy-mm-dd pasted
-  // from any source (including another date field in this modal).
   c.querySelectorAll('.tl-date-input').forEach((input) => {
+    // Paste normalisation: accept dd/mm/yyyy, mm/dd/yyyy or yyyy-mm-dd pasted
+    // from any source (including another date field in this modal).
     input.addEventListener('paste', (e) => {
       e.preventDefault();
       const text = (e.clipboardData || window.clipboardData).getData('text').trim();
@@ -841,6 +846,22 @@ function renderTlPhaseRows(phases) {
       if (iso) {
         input.value = iso;
         input.dispatchEvent(new Event('change')); // triggers auto-fill if needed
+      }
+    });
+    // Native date inputs don't support text selection, so Ctrl/Cmd+A bubbles up
+    // and selects the whole page, and Ctrl/Cmd+C copies nothing. Intercept both
+    // so the field's date can be copied to (and pasted into) another field.
+    input.addEventListener('keydown', (e) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const k = e.key.toLowerCase();
+      if (k === 'a') {
+        e.preventDefault(); // don't select the entire page
+      } else if (k === 'c' && input.value) {
+        e.preventDefault();
+        // Copy the ISO value so pasting into another field round-trips losslessly
+        // (the paste handler matches YYYY-MM-DD exactly, avoiding dd/mm ambiguity).
+        navigator.clipboard?.writeText(input.value);
       }
     });
   });
@@ -1237,7 +1258,7 @@ function renderTable() {
     makeEditableCell(tdTicket, ch, 'ticket', 'text');
     tr.appendChild(tdTicket);
 
-    const tdDate = cell(ch.date);
+    const tdDate = cell(displayDate(ch.date));
     makeEditableCell(tdDate, ch, 'date', 'date');
     tr.appendChild(tdDate);
 
@@ -1498,6 +1519,13 @@ function toDateInputValue(str) {
 function formatDateDisplay(iso) {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
+// Normalize any stored date string to DD/MM/YYYY for display.
+// Handles ISO (YYYY-MM-DD) from the Sheets API as well as already-normalized values.
+function displayDate(str) {
+  if (!str) return '';
+  return formatDateDisplay(str);
 }
 
 function makeEditableCell(td, ch, field, type = 'text') {
@@ -1907,7 +1935,8 @@ async function saveSettings() {
   const rawTemplate  = $('cfgTemplateId').value.trim();
   const rawRoot      = $('cfgRootFolderId').value.trim();
   const prevSharedId = Config.get('sharedConfigId') || '';
-  const newSharedId  = $('cfgSharedConfigId').value.trim();
+  const rawSharedId  = $('cfgSharedConfigId').value.trim();
+  const newSharedId  = extractSpreadsheetId(rawSharedId) || rawSharedId;
   Config.save({
     clientId:       $('cfgClientId').value.trim(),
     templateId:     extractSpreadsheetId(rawTemplate) || rawTemplate,

@@ -260,6 +260,10 @@ input, select, textarea {
   padding: 8px 10px;
 }
 input::placeholder { color: var(--muted); }
+/* Render native date controls (calendar icon + picker popup) in dark mode so
+   the icon isn't black-on-black. */
+input[type=date] { color-scheme: dark; }
+input[type=date]::-webkit-calendar-picker-indicator { cursor: pointer; }
 input[type=checkbox] {
   width: auto; padding: 0;
   background: var(--input-bg); border: 1px solid var(--border);
