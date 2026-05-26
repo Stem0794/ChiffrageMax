@@ -208,20 +208,28 @@ export const DriveAPI = {
     });
   },
 
-  // Permanently delete a file. files.delete only works for files the user
-  // owns (and, inside a Shared Drive, requires an organizer role); otherwise
-  // Drive answers 403. In that case fall back to moving the file to the trash,
-  // which only needs write access and still removes it from every scan
-  // (all our Drive queries filter on trashed=false).
+  // Permanently delete a file. files.delete requires ownership (or organizer
+  // role on a Shared Drive) — otherwise Drive returns 403. Some Workspace
+  // domain policies also return 404 for files the caller cannot manage via the
+  // Admin API, even when the caller owns them. In both cases fall back to
+  // trashing, which only needs write access and hides the file from all our
+  // scans (trashed=false filter). If trashing also fails, re-throw the
+  // original error so the caller can decide what to do next.
   async deleteFile(fileId) {
+    let firstErr = null;
     try {
       return await gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, { method: 'DELETE' });
     } catch (e) {
-      if (!/\(403\)/.test(e.message)) throw e;
-      return gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, {
+      if (!/\(40[34]\)/.test(e.message)) throw e;
+      firstErr = e;
+    }
+    try {
+      return await gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, {
         method: 'PATCH',
         body: JSON.stringify({ trashed: true }),
       });
+    } catch {
+      throw firstErr;
     }
   },
 };
