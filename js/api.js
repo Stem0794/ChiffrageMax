@@ -195,7 +195,20 @@ export const DriveAPI = {
     });
   },
 
-  deleteFile(fileId) {
-    return gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, { method: 'DELETE' });
+  // Permanently delete a file. files.delete only works for files the user
+  // owns (and, inside a Shared Drive, requires an organizer role); otherwise
+  // Drive answers 403. In that case fall back to moving the file to the trash,
+  // which only needs write access and still removes it from every scan
+  // (all our Drive queries filter on trashed=false).
+  async deleteFile(fileId) {
+    try {
+      return await gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, { method: 'DELETE' });
+    } catch (e) {
+      if (!/\(403\)/.test(e.message)) throw e;
+      return gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ trashed: true }),
+      });
+    }
   },
 };
