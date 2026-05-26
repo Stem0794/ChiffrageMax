@@ -1653,8 +1653,25 @@ async function onDeleteChiffrage(ch, btn) {
   try {
     await deleteChiffrage(ch.id);
   } catch (e) {
-    // 404 = file already gone from Drive — remove the stale dashboard row silently
-    if (!e.message.includes('404')) {
+    if (e.message.includes('404')) {
+      // Drive returns 404 either because the file is truly gone OR because
+      // the Drive API token cannot reach this file (stale/limited scope).
+      // Probe with the Sheets API (different scope path) to tell them apart.
+      try {
+        await SheetsAPI.get(ch.id, { fields: 'spreadsheetId' });
+        // Sheets can still read it → file exists, Drive API just can't delete it.
+        toast(
+          'L\'API Drive ne trouve pas ce fichier (erreur 404). '
+          + 'Déconnectez-vous puis reconnectez-vous pour actualiser les permissions, '
+          + 'ou supprimez le fichier directement depuis Google Drive.',
+          'error',
+        );
+        busy(btn, false);
+        return;
+      } catch {
+        // Sheets read also failed → file is truly gone — remove the stale row.
+      }
+    } else {
       toast(e.message, 'error');
       busy(btn, false);
       return;
