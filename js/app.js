@@ -1556,7 +1556,7 @@ function makeEditableCell(td, ch, field, type = 'text') {
       const rawVal = inputEl.value;
       const newVal = typeof rawVal === 'string' ? rawVal.trim() : rawVal;
       td.classList.remove('editing');
-      if (!newVal || newVal === prev) { td.textContent = prev; return; }
+      if (newVal === prev) { td.textContent = prev; return; }
       td.textContent = '…';
       try {
         const nameBefore = ch.name;
