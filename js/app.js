@@ -1655,21 +1655,28 @@ async function onDeleteChiffrage(ch, btn) {
   } catch (e) {
     if (e.message.includes('404')) {
       // Drive returns 404 either because the file is truly gone OR because
-      // the Drive API token cannot reach this file (stale/limited scope).
-      // Probe with the Sheets API (different scope path) to tell them apart.
+      // Drive can't reach this file at all (external Shared Drive collaborator,
+      // Workspace domain API restrictions, etc.). Probe with the Sheets API
+      // — which uses a different auth path — to tell them apart.
       try {
         await SheetsAPI.get(ch.id, { fields: 'spreadsheetId' });
-        // Sheets can still read it → file exists, Drive API just can't delete it.
-        toast(
-          'L\'API Drive ne trouve pas ce fichier (erreur 404). '
-          + 'Déconnectez-vous puis reconnectez-vous pour actualiser les permissions, '
-          + 'ou supprimez le fichier directement depuis Google Drive.',
-          'error',
-        );
+        // Sheets can still read it → file exists, but Drive API cannot access it.
+        // Offer to at least remove the dashboard row and open the file for manual deletion.
         busy(btn, false);
-        return;
+        const driveUrl = ch.url || `https://drive.google.com/file/d/${ch.id}`;
+        const proceed = window.confirm(
+          `L'API Drive ne peut pas supprimer ce fichier (erreur 404).\n\n`
+          + `Causes possibles :\n`
+          + `• Le fichier est dans un Drive d'équipe dont vous n'êtes pas membre\n`
+          + `• Votre domaine Google Workspace restreint l'API Drive pour les apps tierces\n\n`
+          + `Supprimez-le manuellement en cliquant sur "Ouvrir" (colonne Fichier), `
+          + `puis faites clic droit → Déplacer vers la corbeille.\n\n`
+          + `Voulez-vous le retirer du tableau de bord maintenant ?`,
+        );
+        if (!proceed) return;
+        // Remove only from the dashboard — the Drive file is untouched.
       } catch {
-        // Sheets read also failed → file is truly gone — remove the stale row.
+        // Sheets read also failed → file is truly gone → remove the stale row.
       }
     } else {
       toast(e.message, 'error');

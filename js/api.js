@@ -161,6 +161,19 @@ export const DriveAPI = {
     return files;
   },
 
+  // Create a blank spreadsheet via the Drive API so the file is always in the
+  // app's authorised set — this ensures files.delete works even when the OAuth
+  // token only covers drive.file scope.  Returns {id, ...} (Drive response).
+  createSpreadsheet(name) {
+    return gfetch(`${DRIVE}?${DRIVE_SHARED}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        mimeType: 'application/vnd.google-apps.spreadsheet',
+      }),
+    });
+  },
+
   createFolder(name, parentId) {
     return gfetch(`${DRIVE}?${DRIVE_SHARED}`, {
       method: 'POST',

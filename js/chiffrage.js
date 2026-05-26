@@ -307,9 +307,15 @@ export async function nouveauChiffrage(entry) {
     throw new Error(`Modèle introuvable : ${e.message} — Vérifiez l'ID du modèle dans ⚙️ Configuration.`);
   }
 
-  const created = await SheetsAPI.create(idChiffrage);
-  const newId = created.spreadsheetId;
-  const defaultSheetId = created.sheets[0].properties.sheetId;
+  // Create via Drive API (not Sheets API) so the file is registered in the
+  // app's authorised file set — this guarantees files.delete works regardless
+  // of whether the token has full `drive` scope or the narrower `drive.file`.
+  const created = await DriveAPI.createSpreadsheet(idChiffrage);
+  const newId = created.id; // Drive API returns {id}, Sheets API returns {spreadsheetId}
+
+  // Fetch the default sheet ID created with the blank spreadsheet.
+  const blankMeta = await SheetsAPI.get(newId, { fields: 'sheets(properties(sheetId))' });
+  const defaultSheetId = blankMeta.sheets[0].properties.sheetId;
 
   let copiedSheetId;
   try {
