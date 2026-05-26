@@ -237,8 +237,11 @@ async function genererChiffrageSelonConfig(newSpreadsheetId, sheetId, lastCol, i
 
 async function setValidationChiffrageDropdown(spreadsheetId, sheetId) {
   const res = await SheetsAPI.getValues(spreadsheetId, 'Chiffrage!A:A');
-  const colA = (res.values || []).flat();
-  const labelIdx = colA.findIndex((v) => String(v).toLowerCase().includes('validation chiffrage'));
+  const rows = res.values || [];
+  // Scan rows directly — do NOT flatten. The Sheets API returns blank rows as
+  // empty arrays, and flattening would collapse them, shifting every index so
+  // the dropdown lands on the wrong cell (e.g. A7/TJM).
+  const labelIdx = rows.findIndex((row) => String(row?.[0] || '').toLowerCase().includes('validation chiffrage'));
   if (labelIdx < 0) return; // label not present in model — skip
 
   const dropdownRow0 = labelIdx + 1; // 0-based index of the cell below the label
