@@ -1872,6 +1872,9 @@ function openSettings() {
   $('cfgOwnConfigId').value = DriveConfig.getFileId() || '';
   $('addClientName').value = '';
   $('addClientFolder').value = '';
+  // Show first-run guide when template or clients are not yet configured.
+  const isNewUser = !c.templateId || !Config.getClients().length;
+  $('setupGuide').classList.toggle('hidden', !isNewUser);
   renderClientList();
   openModal('settingsModal');
 }
@@ -2061,8 +2064,13 @@ function init() {
     phasesData = [{ items: 1 }];
     renderPhaseRows();
     renderRoleCheckboxes(selectedClient);
+    // Show a prereq hint when the app isn't configured yet.
+    const missingTemplate = !Config.get('templateId');
+    const missingFolder = !Config.getClients().some((c) => c.folderId) && !Config.get('rootFolderId');
+    $('newPrereqBanner').classList.toggle('hidden', !missingTemplate && !missingFolder);
     openModal('newModal');
   });
+  $('openSettingsFromNew').addEventListener('click', () => { closeModal('newModal'); openSettings(); });
   $('btnAddPhase').addEventListener('click', addPhase);
   $('newClient').addEventListener('change', (e) => renderRoleCheckboxes(e.target.value.trim()));
   $('newClient').addEventListener('input', (e) => {

@@ -649,6 +649,93 @@ label input, label select, .input-full {
 /* Shared config ID row in settings modal */
 .cfg-id-row { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
 
+/* ---- Settings modal — new structure ---- */
+
+/* First-run setup guide */
+.setup-guide {
+  background: linear-gradient(135deg, #1a2547, #121830);
+  border: 1px solid #2d3f6b;
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.setup-guide-title { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 10px; }
+.setup-steps { margin: 0 0 10px; padding-left: 20px; color: var(--ink); font-size: 13px; line-height: 1.9; }
+.setup-steps strong { color: #93c5fd; }
+.setup-guide-sub {
+  margin: 0; font-size: 12px; color: var(--muted);
+  border-top: 1px solid #2d3f6b; padding-top: 10px;
+}
+.setup-guide-sub strong { color: var(--muted); }
+
+/* Numbered section headers */
+.cfg-section { margin-bottom: 4px; }
+.cfg-section-title {
+  font-size: 14px; font-weight: 600; color: var(--ink);
+  margin: 0 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.cfg-step-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--primary); color: #fff;
+  font-size: 11px; font-weight: 700; flex-shrink: 0;
+}
+.cfg-badge {
+  font-size: 10px; font-weight: 600; border-radius: 4px;
+  padding: 1px 6px; letter-spacing: .02em;
+}
+.cfg-badge--required { background: #3b1f0a; color: #f59e0b; border: 1px solid #5c3a0f; }
+.cfg-badge--optional { background: var(--panel-alt); color: var(--muted); border: 1px solid var(--border); }
+.cfg-section-desc { color: var(--muted); font-size: 12px; margin: -4px 0 10px; }
+
+/* Shared config dual-card layout */
+.cfg-share-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 560px) { .cfg-share-grid { grid-template-columns: 1fr; } }
+.cfg-share-card {
+  background: var(--panel-alt); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px;
+}
+.cfg-share-card-head {
+  display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px;
+}
+.cfg-share-icon { font-size: 22px; flex-shrink: 0; line-height: 1; }
+.cfg-share-card-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.cfg-share-card-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* Advanced collapsible */
+.cfg-advanced {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.cfg-advanced > summary {
+  padding: 10px 14px; cursor: pointer;
+  font-size: 13px; color: var(--muted);
+  list-style: none; display: flex; align-items: center; gap: 8px;
+  user-select: none;
+}
+.cfg-advanced > summary::-webkit-details-marker { display: none; }
+.cfg-advanced > summary::before {
+  content: '▶'; font-size: 9px; color: var(--muted);
+  transition: transform .15s; flex-shrink: 0;
+}
+.cfg-advanced[open] > summary::before { transform: rotate(90deg); }
+.cfg-advanced > summary:hover { color: var(--ink); background: var(--hover); }
+.cfg-advanced-body { padding: 14px; border-top: 1px solid var(--border); }
+
+/* New chiffrage prereq banner */
+.new-prereq-banner {
+  background: #2d1f06; border: 1px solid #5c3a0f; color: #f59e0b;
+  border-radius: 8px; padding: 10px 14px;
+  font-size: 13px; margin-bottom: 14px;
+  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+}
+.new-prereq-banner .link-btn { color: #f59e0b; font-weight: 600; }
+
 /* Timeline button highlight on dashboard rows */
 .btn.in-timeline { background: #14331f; border-color: #1f7a45; }
 

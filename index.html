@@ -146,48 +146,111 @@
 
   <!-- Settings modal -->
   <div id="settingsModal" class="modal hidden">
-    <div class="modal-card modal-card--tall">
+    <div class="modal-card modal-card--tall modal-card--wide">
       <h2>⚙️ Configuration</h2>
-      <label>OAuth Client ID Google
-        <input id="cfgClientId" type="text" placeholder="xxxxx.apps.googleusercontent.com" />
-        <span class="field-hint">Pré-rempli avec l'identifiant embarqué dans l'app : laissez tel quel pour démarrer. Surchargez-le uniquement si vous utilisez votre propre projet Google Cloud (pensez alors à ajouter l'URL de cette page aux origines JavaScript autorisées).</span>
-      </label>
-      <label>ID du modèle (fichier ModeleChiffrage)
-        <input id="cfgTemplateId" type="text" placeholder="ID ou URL du Google Sheet modèle" />
-        <span class="field-hint">Fichier template utilisé pour créer chaque nouveau chiffrage. Partagez-le en lecture avec votre compte.</span>
-      </label>
-      <label>Dossier Drive racine (fallback)
-        <input id="cfgRootFolderId" type="text" placeholder="ID ou URL du dossier Drive racine" />
-        <span class="field-hint">Utilisé si le client n'a pas de dossier configuré. Les sous-dossiers année/mois y seront créés automatiquement.</span>
-      </label>
-      <p class="hint">Ces valeurs sont stockées uniquement dans votre navigateur (localStorage). Rien n'est envoyé à un serveur.</p>
 
-      <hr class="divider" />
+      <!-- First-run guide — shown by JS when template or clients are missing -->
+      <div id="setupGuide" class="setup-guide hidden">
+        <div class="setup-guide-title">👋 Bienvenue dans ChiffrageMax !</div>
+        <ol class="setup-steps">
+          <li>Renseignez l'<strong>ID du modèle</strong> Google Sheets (section 1 ci-dessous)</li>
+          <li>Ajoutez au moins un <strong>client</strong> avec son dossier Drive (section 2)</li>
+          <li>Fermez cette fenêtre et cliquez sur <strong>➕ Nouveau chiffrage</strong></li>
+        </ol>
+        <p class="setup-guide-sub">Si votre équipe utilise déjà ChiffrageMax, demandez l'<strong>ID de configuration</strong> à un collègue et collez-le dans la section "Rejoindre une équipe" (section 3).</p>
+      </div>
 
-      <h3 class="section-title">📁 Clients et dossiers Drive</h3>
-      <p class="hint" style="margin-top:0">Chaque client peut avoir son propre dossier Drive racine. Configurez aussi les rôles/TJM par client via le bouton 💰.</p>
-      <div id="clientList" class="client-list"></div>
-      <div class="client-add-row">
-        <input id="addClientName" type="text" placeholder="Nom du client" class="input-sm" />
-        <input id="addClientFolder" type="text" placeholder="URL ou ID du dossier Drive" class="input-sm input-sm--grow" />
-        <button id="btnAddClient" class="btn btn-primary btn-sm">Ajouter</button>
+      <!-- 1 — Template -->
+      <div class="cfg-section">
+        <h3 class="cfg-section-title">
+          <span class="cfg-step-badge">1</span>
+          Modèle de chiffrage
+          <span class="cfg-badge cfg-badge--required">requis</span>
+        </h3>
+        <label>ID ou URL du Google Sheet modèle
+          <input id="cfgTemplateId" type="text" placeholder="ex: https://docs.google.com/spreadsheets/d/…" />
+          <span class="field-hint">Fichier template copié pour chaque nouveau chiffrage. Partagez-le en lecture avec votre compte Google. Vous pouvez coller l'URL complète — l'ID sera extrait automatiquement.</span>
+        </label>
+        <label>Dossier Drive racine <span class="cfg-badge cfg-badge--optional">optionnel</span>
+          <input id="cfgRootFolderId" type="text" placeholder="ex: https://drive.google.com/drive/folders/…" />
+          <span class="field-hint">Dossier de secours utilisé quand aucun dossier n'est associé au client. Les sous-dossiers année/mois y sont créés automatiquement.</span>
+        </label>
       </div>
 
       <hr class="divider" />
 
-      <h3 class="section-title">🔗 Partage de configuration</h3>
-      <p class="hint" style="margin-top:0">Partagez votre fichier de config Drive avec vos collègues pour travailler sur le même tableau de bord et la même timeline.</p>
-      <label>Votre fichier de config (ID Drive)
-        <div class="cfg-id-row">
-          <input id="cfgOwnConfigId" type="text" readonly style="flex:1;width:auto;opacity:.7;cursor:default" placeholder="(synchronisez-vous pour obtenir l'ID)" />
-          <button id="btnCopyConfigId" class="btn btn-sm" type="button" title="Copier l'ID dans le presse-papier">📋 Copier</button>
+      <!-- 2 — Clients -->
+      <div class="cfg-section">
+        <h3 class="cfg-section-title">
+          <span class="cfg-step-badge">2</span>
+          Clients et dossiers Drive
+        </h3>
+        <p class="cfg-section-desc">Chaque client peut avoir son propre dossier Drive racine. Configurez aussi les rôles et TJM par client via le bouton 💰.</p>
+        <div id="clientList" class="client-list"></div>
+        <div class="client-add-row">
+          <input id="addClientName" type="text" placeholder="Nom du client" class="input-sm" />
+          <input id="addClientFolder" type="text" placeholder="URL ou ID du dossier Drive" class="input-sm input-sm--grow" />
+          <button id="btnAddClient" class="btn btn-primary btn-sm">+ Ajouter</button>
         </div>
-        <span class="field-hint">Partagez cet ID avec vos collègues via Drive → Partager → Lecteur (ou Éditeur pour la collaboration). Ils pourront le coller ci-dessous.</span>
-      </label>
-      <label>ID de config partagée (optionnel)
-        <input id="cfgSharedConfigId" type="text" placeholder="ID Drive du fichier ChiffrageMax-Config.json d'un collègue" />
-        <span class="field-hint">Laissez vide pour utiliser votre propre config. Si renseigné, l'app lira et écrira dans ce fichier partagé — idéal pour synchroniser toute l'équipe.</span>
-      </label>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- 3 — Team sync -->
+      <div class="cfg-section">
+        <h3 class="cfg-section-title">
+          <span class="cfg-step-badge">3</span>
+          Synchronisation avec l'équipe
+          <span class="cfg-badge cfg-badge--optional">optionnel</span>
+        </h3>
+        <p class="cfg-section-desc">Partagez votre configuration (clients, timeline) avec vos collègues pour travailler sur le même tableau de bord.</p>
+        <div class="cfg-share-grid">
+          <div class="cfg-share-card">
+            <div class="cfg-share-card-head">
+              <span class="cfg-share-icon">📤</span>
+              <div>
+                <div class="cfg-share-card-title">Partager ma config</div>
+                <div class="cfg-share-card-sub">Je suis le premier utilisateur</div>
+              </div>
+            </div>
+            <label>Mon ID de configuration
+              <div class="cfg-id-row">
+                <input id="cfgOwnConfigId" type="text" readonly style="flex:1;width:auto;opacity:.7;cursor:default" placeholder="(connectez-vous pour obtenir l'ID)" />
+                <button id="btnCopyConfigId" class="btn btn-sm" type="button" title="Copier l'ID dans le presse-papier">📋 Copier</button>
+              </div>
+              <span class="field-hint">Copiez cet ID et donnez-le à vos collègues. Dans Drive, accordez-leur l'accès "Éditeur" sur le fichier <em>ChiffrageMax-Config.json</em>.</span>
+            </label>
+          </div>
+          <div class="cfg-share-card">
+            <div class="cfg-share-card-head">
+              <span class="cfg-share-icon">📥</span>
+              <div>
+                <div class="cfg-share-card-title">Rejoindre une équipe</div>
+                <div class="cfg-share-card-sub">Un collègue utilise déjà l'app</div>
+              </div>
+            </div>
+            <label>ID de config partagée
+              <input id="cfgSharedConfigId" type="text" placeholder="Collez ici l'ID reçu d'un collègue" />
+              <span class="field-hint">Une fois renseigné, clients et timeline seront lus depuis ce fichier partagé. Laissez vide pour utiliser votre propre config.</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- Advanced — collapsed by default -->
+      <details class="cfg-advanced">
+        <summary>Paramètres avancés — OAuth Client ID</summary>
+        <div class="cfg-advanced-body">
+          <label>OAuth Client ID Google
+            <input id="cfgClientId" type="text" placeholder="xxxxx.apps.googleusercontent.com" />
+            <span class="field-hint">Pré-rempli avec l'identifiant intégré à l'app — laissez tel quel pour démarrer. Modifiez uniquement si vous utilisez votre propre projet Google Cloud (pensez alors à ajouter l'URL de cette page aux origines JavaScript autorisées).</span>
+          </label>
+        </div>
+      </details>
+
+      <p class="hint" style="margin-top:14px;padding:0">Toutes les valeurs sont stockées uniquement dans votre navigateur (localStorage). Rien ne transite par un serveur externe.</p>
 
       <div class="modal-actions">
         <button id="btnSaveSettings" class="btn btn-primary">Enregistrer</button>
@@ -200,6 +263,11 @@
   <div id="newModal" class="modal hidden">
     <div class="modal-card modal-card--tall modal-card--wide">
       <h2>➕ Nouveau chiffrage</h2>
+      <div id="newPrereqBanner" class="new-prereq-banner hidden">
+        <span>⚠️ Configuration incomplète.</span>
+        <button id="openSettingsFromNew" class="link-btn">Ouvrir la configuration ⚙️</button>
+        pour renseigner le modèle et ajouter un client avant de créer un chiffrage.
+      </div>
       <div class="new-form-grid">
         <label>N° devis<input id="newNumDevis" type="text" placeholder="ex: DEV-2026-001" /></label>
         <label>Client *
