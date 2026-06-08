@@ -8,11 +8,18 @@ const TIMELINE_KEY = 'chiffragemax.timeline';
 // in every OAuth request), and a Sheet ID is just a file identifier. Access is
 // still gated by Google sign-in and by who the template Sheet is shared with.
 // Users can override either value in ⚙️ Configuration; their entry wins.
+//
+// For a PUBLIC fork/deploy, leave these EMPTY: each deployer should ship their
+// own Google Cloud OAuth Client ID and template Sheet (or let each user enter
+// them in ⚙️ Configuration). Do NOT embed your personal project's Client ID
+// here when publishing the repo — it would route strangers' OAuth traffic and
+// API quota through your Google Cloud project.
 const BAKED = {
-  clientId: '557845598051-fkvj620tspj1oalgd9j7sa8avadqli00.apps.googleusercontent.com',
+  clientId: '',
   // ModeleChiffrage Sheet ID shipped as the default template. Leave empty to
-  // require manual entry. Share this Sheet read-only with colleagues' accounts.
-  templateId: '1e29v5tsazqf3Yg_NyyXjRVLacZSUX4m8bj_Vh6z9FBU',
+  // require manual entry. If you embed one, share it read-only with the Google
+  // accounts that should be able to use it.
+  templateId: '',
 };
 
 const DEFAULTS = {
