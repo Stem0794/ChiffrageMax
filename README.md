@@ -52,6 +52,13 @@ Onglet dédié affichant un **diagramme de Gantt** des projets ajoutés à la ti
 - **Filtrable par client** (idéal pour partager à un client le planning de ses projets validés).
 - Les périodes sont sauvegardées dans la configuration Drive (synchronisées entre appareils).
 
+## 🏢 Déploiement en entreprise
+
+Vous mettez ChiffrageMax en place pour toute une équipe ? Suivez le **[Guide
+d'installation de A à Z](docs/GUIDE-ENTREPRISE.md)** : projet Google Cloud, OAuth,
+hébergement, structure du Sheet modèle, organisation Drive, partage de la config à
+l'équipe, workflow quotidien, sécurité/RGPD et dépannage.
+
 ## Configuration Google Cloud (une fois)
 
 1. Créez un projet sur [console.cloud.google.com](https://console.cloud.google.com/).
