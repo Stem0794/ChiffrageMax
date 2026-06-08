@@ -1,0 +1,14 @@
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Logs et divers
+*.log
+
+# Secrets / config locale éventuelle (ne jamais committer)
+.env
+.env.*
+config.local.js

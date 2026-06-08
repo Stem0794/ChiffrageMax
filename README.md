@@ -1,10 +1,26 @@
 # ChiffrageMax
 
-Application web (SPA) **100 % frontend** pour gérer des chiffrages de projets, hébergeable sur **GitHub Pages**. Aucune étape de build, aucun backend.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Build: none](https://img.shields.io/badge/build-none-success)
+![Stack: Vanilla JS](https://img.shields.io/badge/stack-Vanilla%20JS-f7df1e)
+
+Application web (SPA) **100 % frontend** pour gérer des chiffrages de projets, hébergeable sur **GitHub Pages**. Aucune étape de build, aucun backend, aucune dépendance externe.
 
 L'application lit et écrit directement dans **Google Sheets** et **Google Drive** via leurs API REST, avec authentification **OAuth** par Google Identity Services (GIS).
 
-> **Sécurité** : aucun secret au sens strict n'est stocké dans le dépôt. L'**OAuth Client ID** d'une application Web n'est *pas* un secret (il circule en clair dans chaque requête OAuth) : il est désormais **embarqué dans l'app** pour permettre un partage immédiat avec vos collègues, sans configuration. L'accès reste protégé par la connexion Google de chacun. Chaque utilisateur peut tout de même **surcharger** le Client ID (et l'ID du modèle) via ⚙️ Configuration ; sa valeur prime et reste **locale au navigateur** (localStorage). Le reste (modèle, dossiers, clients, TJM) est synchronisé dans votre Drive personnel.
+## Captures d'écran
+
+> _Ajoutez vos captures dans `docs/` (voir [`docs/README.md`](docs/README.md)), puis **décommentez** le tableau ci-dessous. Le post LinkedIn s'appuiera dessus._
+
+<!-- Décommentez une fois les captures ajoutées dans docs/ :
+| Tableau de bord | Statistiques | Timeline (Gantt) |
+|---|---|---|
+| ![Tableau de bord](docs/dashboard.png) | ![Statistiques](docs/stats.png) | ![Timeline](docs/timeline.png) |
+-->
+
+🔗 **Démo live** : `https://<votre-utilisateur>.github.io/ChiffrageMax/` _(voir [Déploiement GitHub Pages](#déploiement-github-pages))_
+
+> **Sécurité** : aucun secret n'est stocké dans le dépôt. Par défaut, l'**OAuth Client ID** et l'**ID du modèle** ne sont **pas embarqués** (`BAKED` vide dans `js/config.js`) : chaque utilisateur les renseigne via ⚙️ Configuration, ou le déployeur les embarque dans sa propre copie. L'OAuth Client ID d'une application Web n'est *pas* un secret (il circule en clair dans chaque requête OAuth), mais en l'embarquant vous routez le trafic OAuth et les quotas API de tous les visiteurs par **votre** projet Google Cloud — à n'embarquer donc que pour un déploiement interne maîtrisé. Les valeurs saisies dans ⚙️ Configuration restent **locales au navigateur** (localStorage) ; le reste (modèle, dossiers, clients, TJM) est synchronisé dans votre Drive personnel.
 
 ## Fonctionnalités
 
@@ -49,9 +65,9 @@ Onglet dédié affichant un **diagramme de Gantt** des projets ajoutés à la ti
 
 ## Configuration de l'application
 
-Le **Client ID OAuth** et (optionnellement) l'**ID du modèle** sont embarqués dans l'app — vos collègues n'ont donc **rien à configurer** pour démarrer : ils se connectent avec leur compte Google et c'est tout. Pour personnaliser, ouvrez ⚙️ et renseignez :
+À la première ouverture, renseignez la configuration via ⚙️ (rien n'est embarqué par défaut). Si vous déployez en interne, vous pouvez **embarquer** vos valeurs dans `js/config.js` (`BAKED.clientId` / `BAKED.templateId`) pour que vos collègues n'aient **rien à configurer**. Champs disponibles dans ⚙️ :
 
-- **OAuth Client ID** : pré-rempli avec la valeur embarquée. Surchargez-le seulement si vous utilisez votre propre projet Google Cloud.
+- **OAuth Client ID** : le Client ID de votre projet Google Cloud (`...apps.googleusercontent.com`).
 - **ID du modèle** : l'ID ou l'URL du Google Sheet servant de modèle (`ModeleChiffrage`/`Chiffrage`). S'il est embarqué dans l'app, partagez-le en lecture avec les comptes Google de vos collègues.
 - **Dossier Drive racine (fallback)** : utilisé si un client n'a pas de dossier propre.
 - **Clients** : pour chaque client, un nom et un dossier Drive racine. Le bouton 💰 permet de configurer les rôles et TJM par client.
