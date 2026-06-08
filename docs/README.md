@@ -1,14 +1,14 @@
-# Captures d'écran
+# Screenshots
 
-Placez ici les captures référencées par le README principal :
+Place the screenshots referenced by the main README here:
 
-| Fichier | Vue à capturer | Conseils |
+| File | View to capture | Tips |
 |---|---|---|
-| `dashboard.png` | Tableau de bord avec quelques chiffrages | Masquez/anonymisez les noms de clients réels |
-| `stats.png` | Onglet Statistiques (donut + tunnel) | Filtre « Tous les clients » |
-| `timeline.png` | Timeline / Gantt sur un trimestre | Montrez la ligne « aujourd'hui » |
+| `dashboard.png` | Dashboard with a few quotes | Mask/anonymise real client names |
+| `stats.png` | Statistics tab (donut + funnel) | Use the "All clients" filter |
+| `timeline.png` | Timeline / Gantt over one quarter | Show the "today" line |
 
-Une fois les 3 fichiers ajoutés, **décommentez le tableau** dans le `README.md` à la racine.
+Once the 3 files are added, **uncomment the table** in the root `README.md`.
 
-> Astuce : pour un GIF de démo, `peek` (Linux) ou l'enregistreur d'écran natif
-> (macOS / Windows) suffisent. Nommez-le `demo.gif` et ajoutez-le en haut du README.
+> Tip: for a demo GIF, `peek` (Linux) or the native screen recorder
+> (macOS / Windows) work great. Name it `demo.gif` and add it at the top of the README.
