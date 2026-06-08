@@ -1,352 +1,285 @@
-# ChiffrageMax — Setup Guide (installation de A à Z pour une entreprise)
+# ChiffrageMax — Setup Guide (A to Z for a company)
 
-Ce guide décrit, pas à pas, comment déployer ChiffrageMax pour toute une équipe :
-de la création du projet Google Cloud jusqu'à l'utilisation quotidienne par vos
-chargés d'affaires. Comptez **30 à 60 minutes** pour la première mise en place.
+This guide walks you through deploying ChiffrageMax for an entire team —
+from creating the Google Cloud project to daily use by your account managers.
+Allow **30 to 60 minutes** for the initial setup.
 
-> **Rien à coder.** L'application est 100 % frontend (HTML/CSS/JS, sans build).
-> Vous l'hébergez telle quelle, et chaque utilisateur travaille avec **son propre
-> compte Google** : les données restent dans **le Google Drive de l'entreprise**,
-> ChiffrageMax n'a aucun serveur ni base de données intermédiaire.
+> **No coding required.** The app is 100% frontend (HTML/CSS/JS, no build step).
+> Host it as-is, and every user works with **their own Google account**: data
+> stays inside **your company's Google Drive** — ChiffrageMax has no server or
+> intermediate database.
 
 ---
 
-## 0. Comprendre l'architecture (à lire avant de commencer)
+## 0. Understand the architecture (read before you start)
 
 ```
-┌────────────────────┐      OAuth (navigateur)      ┌──────────────────────┐
-│  Navigateur de      │  ─────────────────────────▶ │  Google Sheets API   │
-│  l'utilisateur      │                              │  Google Drive API    │
-│  (ChiffrageMax,     │ ◀─────────────────────────  │                      │
-│   GitHub Pages)     │      données JSON            └──────────────────────┘
-└────────────────────┘                                         │
+┌────────────────────┐      OAuth (browser)         ┌──────────────────────┐
+│  User's browser     │  ────────────────────────▶  │  Google Sheets API   │
+│  (ChiffrageMax,     │                              │  Google Drive API    │
+│   GitHub Pages)     │  ◀────────────────────────  │                      │
+└────────────────────┘      JSON responses           └──────────────────────┘
+                                                               │
                                                                ▼
-                                        Vos fichiers : Drive / Sheets de l'entreprise
+                                          Your files: company Drive / Sheets
 ```
 
-- **Aucun backend ChiffrageMax** : l'app appelle directement les API Google depuis
-  le navigateur. Vos chiffrages, votre config et vos clients ne transitent par
-  aucun serveur tiers.
-- **Authentification** : Google Identity Services (OAuth). Chaque utilisateur se
-  connecte avec son compte Google d'entreprise (Workspace).
-- **Stockage** :
-  - Les **chiffrages** sont des Google Sheets `CHI-*` rangés dans des dossiers Drive.
-  - La **configuration** (modèle, clients, TJM, timeline) est un fichier
-    `ChiffrageMax-Config.json` dans le Drive de chaque utilisateur (ou partagé, voir §7).
+- **No ChiffrageMax backend**: the app calls Google APIs directly from the browser. Your quotes, config, and client data never pass through a third-party server.
+- **Authentication**: Google Identity Services (OAuth). Each user signs in with their company Google account (Workspace).
+- **Storage**:
+  - **Quotes** are Google Sheets named `CHI-*` stored in Drive folders.
+  - **Configuration** (template, clients, day rates, timeline) is a `ChiffrageMax-Config.json` file in each user's Drive (or shared — see §7).
 
-### Ce qu'il faut préparer
+### What needs to be prepared
 
-| Élément | Qui | Une seule fois ? |
+| Item | Who | One-time? |
 |---|---|---|
-| Projet **Google Cloud** + OAuth Client ID | Admin | ✅ Oui |
-| **Hébergement** de l'app (GitHub Pages) | Admin | ✅ Oui |
-| **Google Sheet modèle** (`ModeleChiffrage`) | Admin | ✅ Oui |
-| **Dossiers Drive** par client | Admin / chargé d'affaires | À la création de chaque client |
-| **Configuration dans l'app** (⚙️) | Chaque utilisateur (ou partagée) | À la première connexion |
+| **Google Cloud project** + OAuth Client ID | Admin | ✅ Yes |
+| **App hosting** (GitHub Pages) | Admin | ✅ Yes |
+| **Template Google Sheet** (`ModeleChiffrage`) | Admin | ✅ Yes |
+| **Drive folders** per client | Admin / account manager | At each new client |
+| **In-app configuration** (⚙️) | Each user (or shared) | At first login |
 
 ---
 
-## 1. Récupérer le code
+## 1. Get the code
 
-Deux options :
+Two options:
 
-**A. Fork (recommandé)** — vous gardez votre propre copie, vous pourrez y embarquer
-votre Client ID et y ajouter vos captures.
+**A. Fork (recommended)** — you keep your own copy and can bake in your Client ID and add screenshots.
 
 ```bash
-# Forkez le dépôt sur GitHub, puis :
-git clone https://github.com/<votre-organisation>/ChiffrageMax.git
+# Fork the repo on GitHub, then:
+git clone https://github.com/<your-org>/ChiffrageMax.git
 cd ChiffrageMax
 ```
 
-**B. Hébergement interne** — copiez simplement les fichiers (`index.html`, `css/`,
-`js/`, `manifest.json`, `favicon.svg`) sur n'importe quel serveur web statique
-(Nginx, Apache, S3, IIS…). Aucune étape de build.
+**B. Internal hosting** — copy the files (`index.html`, `css/`, `js/`, `manifest.json`, `favicon.svg`) to any static web server (Nginx, Apache, S3, IIS…). No build step.
 
 ---
 
-## 2. Configurer Google Cloud (le cœur de l'installation)
+## 2. Configure Google Cloud (the heart of the setup)
 
-> 🔑 C'est l'étape la plus importante. Faites-la avec un compte **administrateur**
-> du Google Workspace de l'entreprise.
+> 🔑 This is the most critical step. Use an **administrator** account of your company's Google Workspace.
 
-### 2.1 Créer le projet
+### 2.1 Create the project
 
-1. Allez sur [console.cloud.google.com](https://console.cloud.google.com/).
-2. En haut, **Sélectionner un projet → Nouveau projet**. Nommez-le p. ex.
-   `ChiffrageMax-Prod`. Créez.
+1. Go to [console.cloud.google.com](https://console.cloud.google.com/).
+2. At the top, **Select a project → New project**. Name it e.g. `ChiffrageMax-Prod`. Create.
 
-### 2.2 Activer les API
+### 2.2 Enable the APIs
 
-Menu **API et services → Bibliothèque**, activez les **deux** :
+Menu **APIs & Services → Library**, enable **both**:
 
 - **Google Sheets API**
 - **Google Drive API**
 
-### 2.3 Écran de consentement OAuth
+### 2.3 OAuth consent screen
 
-Menu **API et services → Écran de consentement OAuth**.
+Menu **APIs & Services → OAuth consent screen**.
 
-- **Type d'utilisateur** :
-  - **Interne** (recommandé si vous avez Google Workspace) → seuls les comptes de
-    votre organisation peuvent l'utiliser, **aucune vérification Google requise**,
-    pas de limite de 100 utilisateurs, pas d'écran d'avertissement.
-  - **Externe** → nécessaire si vos utilisateurs ont des comptes Gmail hors
-    Workspace. Tant que l'app n'est pas **vérifiée** par Google, elle est plafonnée
-    à 100 utilisateurs de test et affiche un avertissement « application non
-    vérifiée ». Pour un usage entreprise, préférez **Interne**.
-- Renseignez le **nom de l'app** (`ChiffrageMax`), l'**e-mail de support** et un
-  e-mail développeur.
-- **Scopes** : ajoutez les deux scopes utilisés par l'app :
+- **User type**:
+  - **Internal** (recommended if you have Google Workspace) → only accounts in your organisation can use it, **no Google verification required**, no 100-user cap, no warning screen.
+  - **External** → required if users have Gmail accounts outside Workspace. Until the app is **verified** by Google, it is capped at 100 test users and shows an "unverified app" warning. For a company deployment, prefer **Internal**.
+- Fill in the **app name** (`ChiffrageMax`), **support email**, and a developer email.
+- **Scopes** — add the two scopes the app uses:
   - `https://www.googleapis.com/auth/spreadsheets`
   - `https://www.googleapis.com/auth/drive`
 
-  > Ce sont des scopes « sensibles/restreints ». En mode **Interne** aucune
-  > vérification n'est nécessaire. En mode **Externe**, leur usage déclenche une
-  > procédure de vérification Google (avec preuve d'usage et éventuel audit).
+  > These are "sensitive/restricted" scopes. In **Internal** mode no verification is needed. In **External** mode they trigger a Google verification process (proof of use and possible audit).
 
-### 2.4 Créer l'identifiant OAuth (Client ID)
+### 2.4 Create the OAuth credential (Client ID)
 
-Menu **API et services → Identifiants → Créer des identifiants → ID client OAuth**.
+Menu **APIs & Services → Credentials → Create credentials → OAuth client ID**.
 
-1. **Type d'application** : *Application Web*.
-2. **Nom** : `ChiffrageMax Web`.
-3. **Origines JavaScript autorisées** — ajoutez **exactement** les URL d'où l'app
-   sera servie (sans chemin, sans `/` final) :
-   - `https://<votre-organisation>.github.io` (déploiement GitHub Pages)
-   - `http://localhost:8000` (tests locaux)
-   - le cas échéant, votre domaine interne : `https://chiffrage.entreprise.com`
-4. **Créez**, puis copiez le **Client ID** (`...apps.googleusercontent.com`).
+1. **Application type**: *Web application*.
+2. **Name**: `ChiffrageMax Web`.
+3. **Authorized JavaScript origins** — add **exactly** the URLs from which the app will be served (no path, no trailing `/`):
+   - `https://<your-org>.github.io` (GitHub Pages deployment)
+   - `http://localhost:8000` (local testing)
+   - your internal domain if applicable: `https://quotes.company.com`
+4. **Create**, then copy the **Client ID** (`...apps.googleusercontent.com`).
 
-> ⚠️ Si l'origine ne correspond pas exactement, la connexion échoue avec une
-> erreur `redirect_uri_mismatch` / `origin not allowed`. C'est la cause n°1 de
-> blocage. Le port compte (`:8000`), le `https` aussi.
+> ⚠️ If the origin does not match exactly, sign-in fails with `redirect_uri_mismatch` / `origin not allowed`. This is the #1 cause of setup failures. The port matters (`:8000`), and so does `https` vs `http`.
 
 ---
 
-## 3. Héberger l'application (GitHub Pages)
+## 3. Host the app (GitHub Pages)
 
-1. Poussez votre fork sur GitHub.
-2. **Settings → Pages** → *Source* : branche principale, dossier **`/ (root)`**.
-3. Attendez l'URL publiée, p. ex. `https://<votre-organisation>.github.io/ChiffrageMax/`.
-4. Vérifiez que cette URL d'origine figure bien dans les **Origines JavaScript
-   autorisées** (étape 2.4). Sinon, ajoutez-la.
+1. Push your fork to GitHub.
+2. **Settings → Pages** → *Source*: main branch, folder **`/ (root)`**.
+3. Wait for the published URL, e.g. `https://<your-org>.github.io/ChiffrageMax/`.
+4. Make sure this origin is listed in the **Authorized JavaScript origins** (step 2.4). Add it if not.
 
-> Hébergement interne ? Servez simplement le dossier en HTTPS et ajoutez son
-> origine dans les identifiants OAuth. Aucun build, aucune variable serveur.
+> Internal hosting? Serve the folder over HTTPS and add its origin to the OAuth credentials. No build, no server-side variables.
 
-### (Optionnel) Embarquer le Client ID pour que l'équipe n'ait rien à saisir
+### (Optional) Bake in the Client ID so teammates configure nothing
 
-Par défaut, rien n'est embarqué (`js/config.js`). Pour un déploiement **interne
-maîtrisé**, vous pouvez pré-remplir le Client ID et l'ID du modèle :
+By default nothing is baked in (`js/config.js`). For a **controlled internal deployment**, you can pre-fill the Client ID and template ID:
 
 ```js
 // js/config.js
 const BAKED = {
-  clientId:   '....apps.googleusercontent.com', // votre Client ID
-  templateId: '1AbC...XyZ',                      // ID du Sheet modèle (voir §4)
+  clientId:   '....apps.googleusercontent.com', // your Client ID
+  templateId: '1AbC...XyZ',                      // template Sheet ID (see §4)
 };
 ```
 
-> ✅ Avantage : vos collègues se connectent et c'est tout.
-> ⚠️ À ne faire que pour **votre** déploiement privé. Ne committez jamais ces
-> valeurs dans un dépôt **public** (vous routeriez le trafic OAuth d'inconnus par
-> votre projet Google Cloud).
+> ✅ Benefit: teammates sign in and they're done.
+> ⚠️ Only do this for **your own** private deployment. Never commit these values to a **public** repository — you would route strangers' OAuth traffic through your Google Cloud project.
 
 ---
 
-## 4. Créer le Google Sheet modèle (`ModeleChiffrage`)
+## 4. Create the template Google Sheet (`ModeleChiffrage`)
 
-ChiffrageMax génère chaque devis en **copiant un onglet modèle** puis en y insérant
-les phases/items et les formules. La structure du modèle doit respecter ce format.
+ChiffrageMax generates each quote by **copying a template tab** and then inserting phases, items, and formulas. The template must follow this exact structure.
 
-### 4.1 Créer le classeur
+### 4.1 Create the spreadsheet
 
-1. Créez un Google Sheet dans le Drive de l'entreprise, nommé p. ex.
-   `ModeleChiffrage`.
-2. Nommez l'**onglet** `ModeleChiffrage` (ou `Chiffrage`). L'app cherche d'abord un
-   onglet `ModeleChiffrage`, puis `Chiffrage`, sinon le premier onglet.
+1. Create a Google Sheet in the company Drive, named e.g. `ModeleChiffrage`.
+2. Name the **tab** `ModeleChiffrage` (or `Chiffrage`). The app looks for a tab named `ModeleChiffrage` first, then `Chiffrage`, otherwise it uses the first tab.
 
-### 4.2 Disposition attendue des cellules
+### 4.2 Expected cell layout
 
-| Emplacement | Contenu | Rempli par |
+| Location | Content | Filled by |
 |---|---|---|
-| **C1** | Client | l'app (à la création) |
-| **C2** | Projet | l'app |
-| **C3** | Ticket | l'app |
-| **C4** | Date (`AAAA-MM-JJ`) | l'app |
-| **C5** | N° de devis | l'app |
-| **Ligne 6, colonnes B→L** | **Noms des rôles** (11 max) | l'app (depuis la config TJM du client) |
-| **Ligne 7, colonnes B→L** | **TJM** de chaque rôle (`$B$7`…`$L$7`) | l'app |
-| **Ligne 9** | En-tête de la **phase 1** | modèle (sert de gabarit) |
-| **Ligne 10** | Première **ligne d'item** | modèle (sert de gabarit) |
-| Colonne **N** (14) | Jours-homme (mandays) par item | utilisateur, dans le Sheet |
-| Colonne **O** (15) | Budget par item | utilisateur, dans le Sheet |
-| Une cellule colonne A contenant **« Validation chiffrage »** | un menu déroulant de statut est posé **juste en dessous** | l'app |
-| Une ligne contenant **`TOTAL (WITHOUT VAT) - BUILD`** | total global ; **c'est de là que le tableau de bord lit le montant** | l'app (formule `=SUM(...)`) |
+| **C1** | Client name | the app (on creation) |
+| **C2** | Project | the app |
+| **C3** | Ticket | the app |
+| **C4** | Date (`YYYY-MM-DD`) | the app |
+| **C5** | Quote number | the app |
+| **Row 6, columns B→L** | **Role names** (11 max) | the app (from client day-rate config) |
+| **Row 7, columns B→L** | **Day rates** per role (`$B$7`…`$L$7`) | the app |
+| **Row 9** | **Phase 1** header row | template (used as a blueprint) |
+| **Row 10** | First **item row** | template (used as a blueprint) |
+| Column **N** (14) | Mandays per item | user, in the Sheet |
+| Column **O** (15) | Budget per item | user, in the Sheet |
+| A cell in column A containing **"Validation chiffrage"** | a status dropdown is placed **immediately below** it | the app |
+| A row containing **`TOTAL (WITHOUT VAT) - BUILD`** | global total; **this is where the dashboard reads the amount** | the app (`=SUM(...)` formula) |
 
-**Points à respecter impérativement :**
+**Rules to follow strictly:**
 
-- La **ligne 9 = en-tête de phase** et la **ligne 10 = item** servent de gabarits :
-  l'app les recopie pour générer toutes les phases et tous les items. Mettez-y la
-  mise en forme souhaitée (couleurs, bordures).
-- Les formules de phase calculent automatiquement : pour chaque rôle,
-  `=SUM(items)*$<col>$7` (jours × TJM), le budget `=SUM(colonne O)` et les
-  jours-homme `=SUM(colonne N)`.
-- Le **libellé du total** doit contenir les mots **`TOTAL`** et **`WITHOUT VAT`**
-  (l'extraction du montant cherche cette chaîne). Le suffixe `- BUILD` est reconnu
-  comme total principal.
-- Le **libellé « Validation chiffrage »** (colonne A) déclenche la pose du menu
-  déroulant de statut (`Envoyé`, `Validé`, `Passé en TMA`, `Refusé`, `Annulé`)
-  sur la cellule juste en dessous.
+- **Row 9 = phase header** and **row 10 = item** act as blueprints: the app copies them to generate all phases and items. Apply your desired formatting (colours, borders) there.
+- Phase formulas are auto-generated: for each role, `=SUM(items)*$<col>$7` (days × day rate), budget `=SUM(column O)`, and mandays `=SUM(column N)`.
+- The **total label** must contain the words **`TOTAL`** and **`WITHOUT VAT`** (the amount extractor searches for this string). The `- BUILD` suffix is recognised as the main total.
+- The **"Validation chiffrage" label** (column A) triggers the status dropdown (`Sent`, `Approved`, `In Maintenance`, `Rejected`, `Cancelled`) on the cell immediately below it.
 
-> 💡 Le plus simple : créez **un chiffrage manuel complet et propre**, vérifiez
-> qu'il rend bien, puis videz les valeurs variables (C1–C5, items) pour en faire le
-> modèle.
+> 💡 Easiest approach: build **one complete, clean quote manually**, verify it looks right, then clear the variable values (C1–C5, items) to turn it into the template.
 
-### 4.3 Récupérer l'ID du modèle et le partager
+### 4.3 Get the template ID and share it
 
-- L'**ID** est dans l'URL : `https://docs.google.com/spreadsheets/d/`**`<ID>`**`/edit`.
-- **Partagez** ce classeur **en lecture** avec les comptes Google de tous les
-  utilisateurs (ou avec votre groupe Workspace). Sans cela, ils ne pourront pas
-  créer de chiffrage.
+- The **ID** is in the URL: `https://docs.google.com/spreadsheets/d/`**`<ID>`**`/edit`.
+- **Share** the spreadsheet **read-only** with all users' Google accounts (or your Workspace group). Without this, they cannot create quotes.
 
 ---
 
-## 5. Organiser Google Drive
+## 5. Organise Google Drive
 
-ChiffrageMax ne maintient **aucun classeur maître** : il **scanne des dossiers
-Drive** à la recherche des fichiers `CHI-*`.
+ChiffrageMax maintains **no master spreadsheet**: it **scans Drive folders** for `CHI-*` files.
 
-1. Créez **un dossier Drive par client** (p. ex. `Clients/ACME`, `Clients/Globex`).
-2. **Partagez** chaque dossier en **édition** avec les utilisateurs concernés.
-3. À la création d'un chiffrage, l'app range automatiquement le fichier dans :
+1. Create **one Drive folder per client** (e.g. `Clients/ACME`, `Clients/Globex`).
+2. **Share** each folder with **edit access** for the relevant users.
+3. When a quote is created, the app automatically places the file in:
 
    ```
-   <dossier du client> / <année> / <année-mois>
-   ex. : Clients/ACME / 2026 / 2026-05 / CHI-2026-05-12- Portail-RH
+   <client folder> / <year> / <year-month>
+   e.g.: Clients/ACME / 2026 / 2026-05 / CHI-2026-05-12- HR-Portal
    ```
 
-   Les sous-dossiers `année` et `année-mois` sont **créés automatiquement** au besoin.
-4. (Optionnel) Un **dossier racine de repli** sert quand un client n'a pas de
-   dossier propre.
+   The `year` and `year-month` subfolders are **created automatically** as needed.
+4. (Optional) A **root fallback folder** is used when a client has no dedicated folder.
 
-> 🗃 **Archiver** ajoute `[ARCH]` au nom du fichier : il est alors ignoré par les
-> scans (zéro appel API). 🗑 **Supprimer** efface définitivement le Sheet.
+> 🗃 **Archive** prepends `[ARCH]` to the filename: it is then skipped on future scans (zero API calls). 🗑 **Delete** permanently removes the Sheet.
 
 ---
 
-## 6. Première configuration dans l'application (⚙️)
+## 6. First in-app configuration (⚙️)
 
-Chaque utilisateur (ou l'admin, voir §7 pour partager) ouvre l'app, se connecte
-avec son compte Google, puis ouvre **⚙️ Configuration** et renseigne :
+Each user (or the admin — see §7 for sharing) opens the app, signs in with their Google account, opens **⚙️ Settings**, and fills in:
 
-1. **OAuth Client ID** — le Client ID de l'étape 2.4 *(déjà pré-rempli si embarqué)*.
-2. **ID du modèle** — l'ID du Sheet `ModeleChiffrage` (§4.3). Une URL complète est
-   acceptée.
-3. **Dossier Drive racine (fallback)** — l'ID du dossier de repli (optionnel).
-4. **Clients** — pour chaque client : un **nom** + l'**ID de son dossier Drive**
-   (§5). Le bouton **💰** ouvre la configuration des **rôles et TJM** du client
-   (jusqu'à 11 rôles, colonnes B→L), appliqués automatiquement à chaque nouveau
-   chiffrage de ce client.
+1. **OAuth Client ID** — the Client ID from step 2.4 *(pre-filled if baked in)*.
+2. **Template ID** — the `ModeleChiffrage` Sheet ID (§4.3). A full URL is accepted.
+3. **Root Drive folder (fallback)** — the fallback folder ID (optional).
+4. **Clients** — for each client: a **name** + their **Drive folder ID** (§5). The **💰** button opens the **roles and day rates** config for that client (up to 11 roles, columns B→L), applied automatically to every new quote for that client.
 
-La configuration est sauvegardée dans `ChiffrageMax-Config.json` sur le Drive de
-l'utilisateur : elle le suit donc d'un appareil à l'autre.
+The config is saved to `ChiffrageMax-Config.json` in the user's Drive, so it follows them across devices.
 
 ---
 
-## 7. Déployer auprès de l'équipe (3 stratégies)
+## 7. Rolling out to the team (3 strategies)
 
-| Stratégie | Pour qui | Comment |
+| Strategy | Best for | How |
 |---|---|---|
-| **A. Config partagée (recommandé)** | Équipes : une config commune (modèle, clients, TJM) | L'admin configure tout, partage `ChiffrageMax-Config.json` (Drive) **en lecture/édition** avec l'équipe, et chacun colle son **ID/URL** dans ⚙️ → champ « **Config partagée** ». Tout le monde voit les mêmes clients/TJM. |
-| **B. Valeurs embarquées** | Déploiement interne figé | Embarquez `clientId` + `templateId` dans `js/config.js` (§3). Les utilisateurs n'ont que leurs clients à ajouter. |
-| **C. Config individuelle** | Petites équipes / indépendants | Chacun saisit sa config dans ⚙️. |
+| **A. Shared config (recommended)** | Teams: one shared config (template, clients, day rates) | Admin configures everything, shares `ChiffrageMax-Config.json` (Drive) with **edit access**, and each user pastes its **ID/URL** in ⚙️ → **Shared config** field. Everyone sees the same clients/day rates. |
+| **B. Baked-in values** | Fixed internal deployment | Bake `clientId` + `templateId` into `js/config.js` (§3). Users only need to add their clients. |
+| **C. Individual config** | Small teams / freelancers | Each person fills in their own ⚙️ settings. |
 
-> La **stratégie A** est idéale en entreprise : un seul endroit pour gérer la liste
-> des clients et les grilles de TJM, partagé à tous. Le Client ID, lui, reste
-> toujours **local au navigateur**.
+> **Strategy A** is ideal for companies: one place to manage the client list and day-rate grids, shared with everyone. The Client ID always stays **browser-local**.
 
 ---
 
-## 8. Workflow quotidien (pour les chargés d'affaires)
+## 8. Daily workflow (for account managers)
 
-1. **Se connecter** avec son compte Google.
-2. **Nouveau chiffrage** : choisir le client, saisir projet / n° devis / date /
-   ticket, définir les phases et le nombre d'items. L'app crée le Sheet à partir du
-   modèle, applique les TJM du client, et l'ajoute au tableau de bord.
-3. **Remplir** les jours-homme par item dans le Sheet (les totaux et budgets se
-   calculent automatiquement).
-4. **Suivre** sur le tableau de bord : éditer en ligne (n° devis, client, projet,
-   date, ticket), changer le **statut** (`Envoyé`, `Validé`…), voir le **montant**.
-5. **Statistiques** : répartition par statut, tunnel de conversion
-   Créés → Envoyés → Validés.
-6. **Timeline** : planning de Gantt par phases (Conception, Développement, Recette,
-   MEP), filtrable par client — pratique pour partager un planning à un client.
+1. **Sign in** with your Google account.
+2. **New quote**: select the client, enter project / quote number / date / ticket, define phases and item counts. The app creates the Sheet from the template, applies the client's day rates, and adds it to the dashboard.
+3. **Fill in** mandays per item in the Sheet (totals and budgets calculate automatically).
+4. **Track** on the dashboard: inline edit (quote number, client, project, date, ticket), change the **status** (`Sent`, `Approved`…), view the **amount**.
+5. **Statistics**: status breakdown, conversion funnel Created → Sent → Approved.
+6. **Timeline**: Gantt chart by phase (Design, Development, Testing, Go-Live), filterable by client — great for sharing a schedule with a client.
 
 ---
 
-## 9. Quotas et performances
+## 9. Quotas & performance
 
-L'API Sheets est limitée à ~60 lectures/min/utilisateur. ChiffrageMax minimise les
-appels :
+The Sheets API is limited to ~60 reads/min/user. ChiffrageMax minimises calls:
 
-- **1 seul appel par fichier** (lecture groupée onglets + valeurs).
-- **Cache local par `modifiedTime`** : un fichier inchangé n'engendre aucun appel.
-- **Limiteur de débit** (~50 lectures/min) + **réessais** avec backoff sur les `429`.
-- Fichiers **`[ARCH]`** ignorés avant tout appel.
+- **1 API call per file** (one grouped read for tab titles + values).
+- **Local cache by `modifiedTime`**: an unchanged file generates zero API calls.
+- **Rate limiter** (~50 reads/min) + **exponential backoff retries** on `429`.
+- **`[ARCH]` files** are skipped before any API call.
 
-En pratique, un portefeuille de plusieurs centaines de chiffrages se recharge sans
-heurter les quotas, et l'affichage est instantané au rechargement
-(*stale-while-revalidate*).
+In practice, a portfolio of several hundred quotes reloads without hitting quotas, and the display is instant on reload (*stale-while-revalidate*).
 
 ---
 
-## 10. Sécurité, données et RGPD
+## 10. Security, data & GDPR
 
-- **Aucune donnée ne quitte l'écosystème Google de l'entreprise** : ChiffrageMax
-  n'a pas de serveur. Les appels vont du navigateur directement aux API Google.
-- **OAuth Client ID** : public par nature (il circule en clair dans chaque requête
-  OAuth) — ce **n'est pas un secret**. L'accès reste protégé par la connexion
-  Google de chacun et par les **partages Drive** que vous accordez.
-- **Jeton d'accès** : court (~1 h), stocké en `localStorage`, renouvelé
-  silencieusement. La déconnexion le révoque.
-- **Maîtrise des accès** : pour retirer l'accès à quelqu'un, retirez-le des partages
-  Drive (dossiers clients + modèle + config partagée), comme pour n'importe quel
-  fichier Google.
-- En mode consentement **Interne**, seuls les comptes de votre Workspace peuvent
-  même se connecter.
+- **No data leaves the company's Google ecosystem**: ChiffrageMax has no server. Calls go from the browser directly to Google APIs.
+- **OAuth Client ID**: public by nature (travels in plaintext in every OAuth request) — it is **not a secret**. Access is protected by each user's Google sign-in and by the **Drive sharing** permissions you grant.
+- **Access token**: short-lived (~1 h), stored in `localStorage`, silently refreshed. Sign-out revokes it.
+- **Access control**: to revoke someone's access, remove them from the Drive shares (client folders + template + shared config) — just like any Google file.
+- In **Internal** consent mode, only accounts in your Workspace can sign in at all.
 
 ---
 
-## 11. Dépannage (erreurs fréquentes)
+## 11. Troubleshooting (common errors)
 
-| Symptôme | Cause probable | Solution |
+| Symptom | Likely cause | Fix |
 |---|---|---|
-| `origin not allowed` / popup OAuth qui se ferme | Origine non déclarée | Ajoutez l'URL **exacte** (protocole + domaine + port, sans `/`) dans les Origines JavaScript autorisées (§2.4). |
-| Écran « application non vérifiée » | Consentement **Externe** non vérifié | Passez en **Interne** (Workspace), ou lancez la vérification Google. |
-| « Modèle introuvable » à la création | `templateId` faux ou modèle non partagé | Vérifiez l'ID dans ⚙️ et **partagez le modèle en lecture** avec le compte (§4.3). |
-| « Impossible de déplacer le fichier vers le dossier » (404/403) | Dossier client non partagé en édition | Partagez le dossier Drive du client avec le compte (§5). |
-| Le montant ne s'affiche pas | Libellé du total non reconnu | La ligne de total doit contenir **`TOTAL`** et **`WITHOUT VAT`** (§4.2). |
-| Le menu de statut tombe au mauvais endroit | Libellé absent/mal placé | Gardez **« Validation chiffrage »** en colonne A dans le modèle (§4.2). |
-| Erreurs `429` répétées | Trop d'appels (gros portefeuille rechargé d'un coup) | Normalement géré automatiquement ; patientez, le backoff réessaie. Archivez (`[ARCH]`) les vieux chiffrages. |
-| Connexion impossible après changement de Client ID | Cache de jeton | Déconnectez-vous, rechargez, reconnectez-vous. |
+| `origin not allowed` / OAuth popup closes immediately | Origin not declared | Add the **exact** URL (protocol + domain + port, no trailing `/`) to Authorized JavaScript origins (§2.4). |
+| "Unverified app" warning screen | **External** consent, not verified | Switch to **Internal** (Workspace), or start Google's verification process. |
+| "Template not found" on quote creation | Wrong `templateId` or template not shared | Check the ID in ⚙️ and **share the template read-only** with the account (§4.3). |
+| "Cannot move file to folder" (404/403) | Client Drive folder not shared with edit access | Share the client's Drive folder with the account (§5). |
+| Amount not displayed | Total label not recognised | The total row must contain **`TOTAL`** and **`WITHOUT VAT`** (§4.2). |
+| Status dropdown lands on the wrong cell | Label missing or misplaced | Keep **"Validation chiffrage"** in column A of the template (§4.2). |
+| Repeated `429` errors | Too many calls (large portfolio reloaded at once) | Normally handled automatically; wait, the backoff will retry. Archive (`[ARCH]`) old quotes. |
+| Cannot sign in after changing Client ID | Stale token in cache | Sign out, reload, sign in again. |
 
 ---
 
-## 12. Checklist de mise en production
+## 12. Go-live checklist
 
-- [ ] Projet Google Cloud créé, **Sheets API** + **Drive API** activées
-- [ ] Écran de consentement OAuth configuré (**Interne** de préférence) avec les 2 scopes
-- [ ] **OAuth Client ID** (Application Web) créé, origines autorisées renseignées
-- [ ] App déployée (GitHub Pages ou interne), origine ajoutée aux identifiants
-- [ ] Sheet **`ModeleChiffrage`** créé au bon format et **partagé en lecture**
-- [ ] **Dossiers clients** Drive créés et **partagés en édition**
-- [ ] Configuration ⚙️ remplie (Client ID, modèle, racine, clients + TJM)
-- [ ] Stratégie de partage choisie (config partagée / embarquée / individuelle)
-- [ ] Test de bout en bout : connexion → nouveau chiffrage → statut → montant → stats
+- [ ] Google Cloud project created, **Sheets API** + **Drive API** enabled
+- [ ] OAuth consent screen configured (**Internal** preferred) with both scopes
+- [ ] **OAuth Client ID** (Web application) created, authorized origins set
+- [ ] App deployed (GitHub Pages or internal), origin added to credentials
+- [ ] **`ModeleChiffrage`** Sheet created with the correct layout and **shared read-only**
+- [ ] **Client Drive folders** created and **shared with edit access**
+- [ ] ⚙️ Configuration filled in (Client ID, template, root folder, clients + day rates)
+- [ ] Sharing strategy chosen (shared config / baked-in / individual)
+- [ ] End-to-end test: sign in → new quote → status → amount → statistics
 
 ---
 
-Bon chiffrage ! Pour les questions de structure de fichiers et de modules,
-voir la section **Structure du projet** du [README](../README.md).
+Happy quoting! For questions about file structure and modules,
+see the **Project Structure** section in the [README](../README.md).
