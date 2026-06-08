@@ -54,8 +54,8 @@ Onglet dédié affichant un **diagramme de Gantt** des projets ajoutés à la ti
 
 ## 🏢 Déploiement en entreprise
 
-Vous mettez ChiffrageMax en place pour toute une équipe ? Suivez le **[Guide
-d'installation de A à Z](docs/GUIDE-ENTREPRISE.md)** : projet Google Cloud, OAuth,
+Vous mettez ChiffrageMax en place pour toute une équipe ? Suivez le **[Setup
+Guide — installation de A à Z](docs/SETUP.md)** : projet Google Cloud, OAuth,
 hébergement, structure du Sheet modèle, organisation Drive, partage de la config à
 l'équipe, workflow quotidien, sécurité/RGPD et dépannage.
 

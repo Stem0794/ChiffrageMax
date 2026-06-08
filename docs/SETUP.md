@@ -1,4 +1,4 @@
-# Guide d'installation ChiffrageMax — de A à Z pour une entreprise
+# ChiffrageMax — Setup Guide (installation de A à Z pour une entreprise)
 
 Ce guide décrit, pas à pas, comment déployer ChiffrageMax pour toute une équipe :
 de la création du projet Google Cloud jusqu'à l'utilisation quotidienne par vos
