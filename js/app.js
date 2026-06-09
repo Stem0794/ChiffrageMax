@@ -1,6 +1,7 @@
 import { Config } from './config.js';
 import { Auth } from './auth.js';
 import { DriveConfig } from './drive-config.js';
+import { Picker } from './picker.js';
 import { SheetsAPI, DriveAPI } from './api.js';
 import {
   nouveauChiffrage, listChiffrages, listArchivedChiffrages, readChiffrageFile, readChiffrageMontant,
@@ -1848,6 +1849,35 @@ async function createChiffrage() {
 function openModal(id) { $(id).classList.remove('hidden'); }
 function closeModal(id) { $(id).classList.add('hidden'); }
 
+/* ---- Google Picker ---- */
+// Open the Drive Picker so the user grants the app access to a specific folder
+// (or the template sheet) under the narrow `drive.file` scope. Returns the
+// selected {id, name, mimeType} or null on cancel/error.
+async function runPicker(kind) {
+  if (!Auth.isSignedIn()) {
+    toast('Connectez-vous d\'abord pour choisir un dossier.', 'error');
+    return null;
+  }
+  if (!Config.get('developerKey')) {
+    toast('Renseignez la « Clé API navigateur » dans ⚙️ Paramètres avancés.', 'error');
+    return null;
+  }
+  try {
+    const token = await Auth.getToken();
+    const opts = {
+      token,
+      developerKey: Config.get('developerKey'),
+      appId: Config.get('projectNumber'),
+    };
+    if (kind === 'template') return await Picker.pickSpreadsheet(opts);
+    if (kind === 'file') return await Picker.pickFile(opts);
+    return await Picker.pickFolder(opts);
+  } catch (e) {
+    toast(e.message, 'error');
+    return null;
+  }
+}
+
 /* ---- Settings ---- */
 function renderClientList() {
   const container = $('clientList');
@@ -1873,10 +1903,15 @@ function renderClientRow(row, c, editing) {
   if (editing) {
     row.innerHTML = `
       <input class="input-sm client-edit-name" type="text" value="${escHtml(c.name)}" placeholder="Nom du client" style="min-width:100px;flex:0 0 auto" />
-      <input class="input-sm input-sm--grow client-edit-folder" type="text" value="${escHtml(c.folderId)}" placeholder="URL ou ID du dossier Drive" />
+      <input class="input-sm input-sm--grow client-edit-folder" type="text" value="${escHtml(c.folderId)}" placeholder="Dossier Drive (bouton 📂)" />
+      <button class="btn btn-sm" data-pick title="Choisir le dossier via Google Drive">📂</button>
       <button class="btn btn-sm btn-primary" data-save>✓</button>
       <button class="btn btn-sm btn-ghost" data-cancel>✕</button>
     `;
+    row.querySelector('[data-pick]').addEventListener('click', async () => {
+      const doc = await runPicker('folder');
+      if (doc) { row.querySelector('.client-edit-folder').value = doc.id; toast(`Dossier sélectionné : ${doc.name}`, 'success'); }
+    });
     row.querySelector('[data-save]').addEventListener('click', async () => {
       const newName = row.querySelector('.client-edit-name').value.trim();
       const newFolderRaw = row.querySelector('.client-edit-folder').value.trim();
@@ -1920,6 +1955,8 @@ function openSettings() {
   $('cfgClientId').value = c.clientId;
   $('cfgTemplateId').value = c.templateId;
   $('cfgRootFolderId').value = c.rootFolderId;
+  $('cfgDeveloperKey').value = c.developerKey || '';
+  $('cfgProjectNumber').value = c.projectNumber || '';
   $('cfgSharedConfigId').value = c.sharedConfigId || '';
   $('cfgOwnConfigId').value = DriveConfig.getFileId() || '';
   $('addClientName').value = '';
@@ -1941,6 +1978,8 @@ async function saveSettings() {
     clientId:       $('cfgClientId').value.trim(),
     templateId:     extractSpreadsheetId(rawTemplate) || rawTemplate,
     rootFolderId:   extractFolderId(rawRoot) || rawRoot,
+    developerKey:   $('cfgDeveloperKey').value.trim(),
+    projectNumber:  $('cfgProjectNumber').value.trim(),
     sharedConfigId: newSharedId,
   });
   closeModal('settingsModal');
@@ -2059,6 +2098,28 @@ function init() {
     }
   });
   $('btnAddClient').addEventListener('click', addClient);
+
+  // Google Picker buttons — let the user grant per-folder/-file access (drive.file).
+  $('btnPickTemplate').addEventListener('click', async () => {
+    const doc = await runPicker('template');
+    if (doc) { $('cfgTemplateId').value = doc.id; toast(`Modèle sélectionné : ${doc.name}`, 'success'); }
+  });
+  $('btnPickRoot').addEventListener('click', async () => {
+    const doc = await runPicker('folder');
+    if (doc) { $('cfgRootFolderId').value = doc.id; toast(`Dossier sélectionné : ${doc.name}`, 'success'); }
+  });
+  $('btnPickClientFolder').addEventListener('click', async () => {
+    const doc = await runPicker('folder');
+    if (doc) {
+      $('addClientFolder').value = doc.id;
+      if (!$('addClientName').value.trim()) $('addClientName').value = doc.name;
+      toast(`Dossier sélectionné : ${doc.name}`, 'success');
+    }
+  });
+  $('btnPickShared').addEventListener('click', async () => {
+    const doc = await runPicker('file');
+    if (doc) { $('cfgSharedConfigId').value = doc.id; toast(`Fichier sélectionné : ${doc.name}`, 'success'); }
+  });
 
   $('clientSelector').addEventListener('change', (e) => {
     selectedClient = e.target.value;
