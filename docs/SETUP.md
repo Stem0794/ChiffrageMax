@@ -82,31 +82,11 @@ Menu **APIs & Services → OAuth consent screen**.
   - **Internal** (recommended if you have Google Workspace) → only accounts in your organisation can use it, **no Google verification required**, no 100-user cap, no warning screen.
   - **External** → required if users have Gmail accounts outside Workspace. Until the app is **verified** by Google, it is capped at 100 test users and shows an "unverified app" warning. For a company deployment, prefer **Internal**.
 - Fill in the **app name** (`ChiffrageMax`), **support email**, and a developer email.
-- **Scope** — add the single scope the app uses:
-  - `https://www.googleapis.com/auth/drive.file`
+- **Scopes** — add the two scopes the app uses:
+  - `https://www.googleapis.com/auth/spreadsheets`
+  - `https://www.googleapis.com/auth/drive`
 
-  > This is a **non-sensitive** scope: it grants the app access only to files it
-  > creates and to items the user explicitly selects via the Google Picker —
-  > **never the user's whole Drive**. It does not trigger Google's restricted-scope
-  > verification/audit, even in **External** mode. (The app no longer requests the
-  > broad `auth/drive` or `auth/spreadsheets` scopes — the Sheets API operates on
-  > the same per-file-granted spreadsheets.)
-
-### 2.3b Enable the Google Picker API + create a browser API key
-
-Because the app uses `drive.file`, users grant access to specific folders and to
-the template by **picking them** in the Google Picker. The Picker needs an API key:
-
-1. **APIs & Services → Library** → enable **Google Picker API**.
-2. **APIs & Services → Credentials → Create credentials → API key**.
-3. Click the new key → **Application restrictions: Websites** → add the exact
-   origin(s) the app is served from (e.g. `https://<user>.github.io`). **API
-   restrictions:** restrict it to the **Google Picker API**.
-4. Copy the key (`AIza…`). It goes in ⚙️ → Paramètres avancés → *Clé API navigateur*.
-   It is **not a secret** (it is restricted by HTTP referrer), but restricting it
-   prevents quota abuse from other sites.
-5. Note your **project number** (console home page) — it also goes in ⚙️ advanced
-   settings so picked files are associated with this app.
+  > These are "sensitive/restricted" scopes. In **Internal** mode no verification is needed. In **External** mode they trigger a Google verification process (proof of use and possible audit).
 
 ### 2.4 Create the OAuth credential (Client ID)
 
@@ -265,18 +245,8 @@ In practice, a portfolio of several hundred quotes reloads without hitting quota
 ## 10. Security, data & GDPR
 
 - **No data leaves the company's Google ecosystem**: ChiffrageMax has no server. Calls go from the browser directly to Google APIs.
-- **Least-privilege access (`drive.file`)**: the app can only touch files it
-  **creates** and folders/files the user **explicitly picks** via the Google
-  Picker. It has **no access to the rest of the user's Drive** — bills, personal
-  documents, unrelated spreadsheets are all out of reach, even if the page itself
-  were ever compromised. This is the main safeguard against accidental data
-  exposure.
-- **OAuth Client ID & Picker API key**: both are public by nature (the Client ID
-  travels in plaintext in every OAuth request; the API key is restricted by HTTP
-  referrer) — neither is a secret. Access is protected by each user's Google
-  sign-in, the per-file `drive.file` grants, and the **Drive sharing** permissions
-  you grant.
-- **Access token**: short-lived (~1 h), stored in `localStorage`, silently refreshed. Sign-out revokes it. Because of the `drive.file` scope, a stolen token can only reach the files already granted to the app — not the whole Drive.
+- **OAuth Client ID**: public by nature (travels in plaintext in every OAuth request) — it is **not a secret**. Access is protected by each user's Google sign-in and by the **Drive sharing** permissions you grant.
+- **Access token**: short-lived (~1 h), stored in `localStorage`, silently refreshed. Sign-out revokes it.
 - **Access control**: to revoke someone's access, remove them from the Drive shares (client folders + template + shared config) — just like any Google file.
 - In **Internal** consent mode, only accounts in your Workspace can sign in at all.
 
@@ -288,10 +258,8 @@ In practice, a portfolio of several hundred quotes reloads without hitting quota
 |---|---|---|
 | `origin not allowed` / OAuth popup closes immediately | Origin not declared | Add the **exact** URL (protocol + domain + port, no trailing `/`) to Authorized JavaScript origins (§2.4). |
 | "Unverified app" warning screen | **External** consent, not verified | Switch to **Internal** (Workspace), or start Google's verification process. |
-| "Template not found" on quote creation | Template not **picked** (so app has no `drive.file` access) | In ⚙️, click **📄 Choisir** next to the template and select it via the Picker — under `drive.file`, sharing alone isn't enough, the file must be picked. |
-| `Picker not available` / "Clé API manquante" | Picker API not enabled or API key missing | Enable the **Google Picker API** and set the **browser API key** + **project number** in ⚙️ advanced settings (§2.3b). |
-| Folder scan returns nothing | Folder not **picked** | In ⚙️, use the **📂** button to select each client folder via the Picker (grants `drive.file` access to that folder and its contents). |
-| "Cannot move file to folder" (404/403) | Client Drive folder not **picked** (no `drive.file` access) or no edit rights | Pick the folder via the **📂** button in ⚙️, and ensure the account has edit access to it (§5). |
+| "Template not found" on quote creation | Wrong `templateId` or template not shared | Check the ID in ⚙️ and **share the template read-only** with the account (§4.3). |
+| "Cannot move file to folder" (404/403) | Client Drive folder not shared with edit access | Share the client's Drive folder with the account (§5). |
 | Amount not displayed | Total label not recognised | The total row must contain **`TOTAL`** and **`WITHOUT VAT`** (§4.2). |
 | Status dropdown lands on the wrong cell | Label missing or misplaced | Keep **"Validation chiffrage"** in column A of the template (§4.2). |
 | Repeated `429` errors | Too many calls (large portfolio reloaded at once) | Normally handled automatically; wait, the backoff will retry. Archive (`[ARCH]`) old quotes. |
@@ -301,10 +269,9 @@ In practice, a portfolio of several hundred quotes reloads without hitting quota
 
 ## 12. Go-live checklist
 
-- [ ] Google Cloud project created, **Sheets API** + **Drive API** + **Google Picker API** enabled
-- [ ] OAuth consent screen configured (**Internal** preferred) with the `drive.file` scope
+- [ ] Google Cloud project created, **Sheets API** + **Drive API** enabled
+- [ ] OAuth consent screen configured (**Internal** preferred) with both scopes
 - [ ] **OAuth Client ID** (Web application) created, authorized origins set
-- [ ] **Browser API key** created (restricted to your origin + Picker API), project number noted
 - [ ] App deployed (GitHub Pages or internal), origin added to credentials
 - [ ] **`ModeleChiffrage`** Sheet created with the correct layout and **shared read-only**
 - [ ] **Client Drive folders** created and **shared with edit access**

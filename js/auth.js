@@ -1,13 +1,8 @@
 import { Config } from './config.js';
 
-// Least-privilege scope: `drive.file` grants access ONLY to files this app
-// creates and to items the user explicitly selects via the Google Picker — never
-// the user's whole Drive. This is what keeps unrelated files (bills, personal
-// docs, other spreadsheets) out of reach even if the page is ever compromised.
-// The Sheets API operates on those same per-file-granted spreadsheets, so no
-// separate `spreadsheets` scope is needed.
 const SCOPES = [
-  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive',
 ].join(' ');
 
 const STORAGE_KEY = 'chiffragemax.token';
