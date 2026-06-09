@@ -20,13 +20,21 @@ const BAKED = {
   // require manual entry. If you embed one, share it read-only with the Google
   // accounts that should be able to use it.
   templateId: '',
+  // Browser API key + Cloud project NUMBER for the Google Picker. Both are
+  // public (not secrets): the API key is restricted by HTTP referrer, and the
+  // project number is not sensitive. Required so users can pick the folders the
+  // app may access under the narrow `drive.file` scope.
+  developerKey: '',
+  projectNumber: '',
 };
 
 const DEFAULTS = {
   clientId:       BAKED.clientId,
   templateId:     BAKED.templateId,
   rootFolderId:   '',
-  sharedConfigId: '', // browser-local only — never synced to Drive
+  developerKey:   BAKED.developerKey,   // browser-local only — never synced to Drive
+  projectNumber:  BAKED.projectNumber,  // browser-local only — never synced to Drive
+  sharedConfigId: '',                   // browser-local only — never synced to Drive
 };
 
 export const Config = {
@@ -37,8 +45,10 @@ export const Config = {
     } catch { /* malformed — fall back to defaults */ }
     const cfg = { ...DEFAULTS, ...stored };
     // A blank stored value must not erase a baked-in default.
-    if (!cfg.clientId)   cfg.clientId   = DEFAULTS.clientId;
-    if (!cfg.templateId) cfg.templateId = DEFAULTS.templateId;
+    if (!cfg.clientId)      cfg.clientId      = DEFAULTS.clientId;
+    if (!cfg.templateId)    cfg.templateId    = DEFAULTS.templateId;
+    if (!cfg.developerKey)  cfg.developerKey  = DEFAULTS.developerKey;
+    if (!cfg.projectNumber) cfg.projectNumber = DEFAULTS.projectNumber;
     return cfg;
   },
 

@@ -9,6 +9,8 @@
   <meta name="theme-color" content="#1e293b" />
   <link rel="stylesheet" href="./css/styles.css" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- Google API loader — provides the Google Picker (folder/file chooser). -->
+  <script src="https://apis.google.com/js/api.js" async defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -167,12 +169,18 @@
           Modèle de chiffrage
           <span class="cfg-badge cfg-badge--required">requis</span>
         </h3>
-        <label>ID ou URL du Google Sheet modèle
-          <input id="cfgTemplateId" type="text" placeholder="ex: https://docs.google.com/spreadsheets/d/…" />
-          <span class="field-hint">Fichier template copié pour chaque nouveau chiffrage. Partagez-le en lecture avec votre compte Google. Vous pouvez coller l'URL complète — l'ID sera extrait automatiquement.</span>
+        <label>Google Sheet modèle
+          <div class="cfg-id-row">
+            <input id="cfgTemplateId" type="text" style="flex:1;width:auto" placeholder="Cliquez sur « Choisir » pour sélectionner le modèle" />
+            <button id="btnPickTemplate" class="btn btn-sm" type="button" title="Choisir le modèle via Google Drive">📄 Choisir</button>
+          </div>
+          <span class="field-hint">Fichier template copié pour chaque nouveau chiffrage. <strong>Choisissez-le via le sélecteur</strong> pour autoriser l'app à y accéder (portée <code>drive.file</code>). Vous pouvez aussi coller un ID/URL si le fichier vous a déjà été partagé via cette app.</span>
         </label>
         <label>Dossier Drive racine <span class="cfg-badge cfg-badge--optional">optionnel</span>
-          <input id="cfgRootFolderId" type="text" placeholder="ex: https://drive.google.com/drive/folders/…" />
+          <div class="cfg-id-row">
+            <input id="cfgRootFolderId" type="text" style="flex:1;width:auto" placeholder="Cliquez sur « Choisir » pour sélectionner le dossier" />
+            <button id="btnPickRoot" class="btn btn-sm" type="button" title="Choisir le dossier via Google Drive">📂 Choisir</button>
+          </div>
           <span class="field-hint">Dossier de secours utilisé quand aucun dossier n'est associé au client. Les sous-dossiers année/mois y sont créés automatiquement.</span>
         </label>
       </div>
@@ -189,7 +197,8 @@
         <div id="clientList" class="client-list"></div>
         <div class="client-add-row">
           <input id="addClientName" type="text" placeholder="Nom du client" class="input-sm" />
-          <input id="addClientFolder" type="text" placeholder="URL ou ID du dossier Drive" class="input-sm input-sm--grow" />
+          <input id="addClientFolder" type="text" placeholder="Dossier Drive (bouton 📂)" class="input-sm input-sm--grow" />
+          <button id="btnPickClientFolder" class="btn btn-sm" type="button" title="Choisir le dossier via Google Drive">📂</button>
           <button id="btnAddClient" class="btn btn-primary btn-sm">+ Ajouter</button>
         </div>
       </div>
@@ -229,9 +238,12 @@
                 <div class="cfg-share-card-sub">Un collègue utilise déjà l'app</div>
               </div>
             </div>
-            <label>ID de config partagée
-              <input id="cfgSharedConfigId" type="text" placeholder="Collez ici l'ID reçu d'un collègue" />
-              <span class="field-hint">Une fois renseigné, clients et timeline seront lus depuis ce fichier partagé. Laissez vide pour utiliser votre propre config.</span>
+            <label>Config partagée
+              <div class="cfg-id-row">
+                <input id="cfgSharedConfigId" type="text" style="flex:1;width:auto" placeholder="Collez l'ID reçu, ou choisissez le fichier" />
+                <button id="btnPickShared" class="btn btn-sm" type="button" title="Choisir le fichier ChiffrageMax-Config.json partagé">📄 Choisir</button>
+              </div>
+              <span class="field-hint">Une fois renseigné, clients et timeline seront lus depuis ce fichier partagé. <strong>Choisissez le fichier</strong> <em>ChiffrageMax-Config.json</em> qu'un collègue vous a partagé pour autoriser l'accès (portée <code>drive.file</code>). Laissez vide pour utiliser votre propre config.</span>
             </label>
           </div>
         </div>
@@ -241,11 +253,19 @@
 
       <!-- Advanced — collapsed by default -->
       <details class="cfg-advanced">
-        <summary>Paramètres avancés — OAuth Client ID</summary>
+        <summary>Paramètres avancés — OAuth & Google Picker</summary>
         <div class="cfg-advanced-body">
           <label>OAuth Client ID Google
             <input id="cfgClientId" type="text" placeholder="xxxxx.apps.googleusercontent.com" />
             <span class="field-hint">Pré-rempli avec l'identifiant intégré à l'app — laissez tel quel pour démarrer. Modifiez uniquement si vous utilisez votre propre projet Google Cloud (pensez alors à ajouter l'URL de cette page aux origines JavaScript autorisées).</span>
+          </label>
+          <label>Clé API navigateur (Google Picker)
+            <input id="cfgDeveloperKey" type="text" placeholder="AIza…" />
+            <span class="field-hint">Clé API du même projet Google Cloud, requise par le sélecteur de fichiers. <strong>Activez l'API « Google Picker »</strong> dans le projet, créez une clé API « navigateur » et restreignez-la à l'URL de cette page. Ce n'est pas un secret (elle est restreinte par référent HTTP).</span>
+          </label>
+          <label>Numéro de projet Google Cloud
+            <input id="cfgProjectNumber" type="text" placeholder="ex: 557845598051" />
+            <span class="field-hint">Le <em>numéro</em> du projet (pas l'ID texte), visible sur la page d'accueil de la console Google Cloud. Permet d'associer les fichiers choisis à l'app pour la portée <code>drive.file</code>.</span>
           </label>
         </div>
       </details>

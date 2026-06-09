@@ -8,6 +8,13 @@ A **100% frontend** single-page web app to manage project quotes, hostable on **
 
 The app reads and writes directly to **Google Sheets** and **Google Drive** via their REST APIs, authenticated via **OAuth** using Google Identity Services (GIS).
 
+> **Least-privilege by design**: the app requests only the narrow
+> `https://www.googleapis.com/auth/drive.file` scope. It can touch **only the
+> files it creates and the folders/files you explicitly select** via the Google
+> Picker — never the rest of your Drive. Your other documents (bills, personal
+> files, unrelated sheets) are unreachable by the app, even if the page were
+> compromised.
+
 ## Screenshots
 
 > _Add your screenshots to `docs/` (see [`docs/README.md`](docs/README.md)), then **uncomment** the table below. These will anchor your LinkedIn post._
@@ -62,22 +69,29 @@ daily workflow, security/GDPR, and troubleshooting.
 ## Google Cloud Setup (one-time)
 
 1. Create a project at [console.cloud.google.com](https://console.cloud.google.com/).
-2. Enable **Google Sheets API** and **Google Drive API**.
-3. Configure the OAuth consent screen.
+2. Enable **Google Sheets API**, **Google Drive API**, and **Google Picker API**.
+3. Configure the OAuth consent screen with the single scope `https://www.googleapis.com/auth/drive.file` (non-sensitive — no Google verification needed).
 4. Create an **OAuth 2.0 Client ID** of type *Web application*.
 5. Under **Authorized JavaScript origins**, add your site URL, e.g.:
    - `https://<your-username>.github.io`
    - `http://localhost:8000` (for local testing)
 6. Copy the **Client ID** (`...apps.googleusercontent.com`).
+7. Create a **browser API key** (Credentials → Create credentials → API key), restrict it to your origin + the **Google Picker API**, and note your **project number**. These power the folder/file picker (entered in ⚙️ → advanced settings). Neither is a secret.
 
 ## App Configuration
 
 On first launch, fill in the settings via ⚙️ (nothing is baked in by default). For an internal deployment, you can **bake in** your values in `js/config.js` (`BAKED.clientId` / `BAKED.templateId`) so teammates have **nothing to configure**. Fields available in ⚙️:
 
 - **OAuth Client ID**: the Client ID from your Google Cloud project (`...apps.googleusercontent.com`).
-- **Template ID**: the ID or URL of the Google Sheet used as the template (`ModeleChiffrage`/`Chiffrage`). If baked in, share it read-only with your colleagues' Google accounts.
-- **Root Drive folder (fallback)**: used when a client has no dedicated folder.
-- **Clients**: for each client, a name and a root Drive folder. The 💰 button lets you configure roles and day rates per client.
+- **Browser API key + project number** (advanced): power the Google Picker — see [Google Cloud Setup](#google-cloud-setup-one-time).
+- **Template**: select the template Google Sheet (`ModeleChiffrage`/`Chiffrage`) with the **📄 Choisir** button. Under `drive.file` you must *pick* it so the app is granted access (sharing alone is not enough).
+- **Root Drive folder (fallback)**: pick it with the **📂** button; used when a client has no dedicated folder.
+- **Clients**: for each client, a name and a Drive folder selected with the **📂** button. The 💰 button lets you configure roles and day rates per client.
+
+> Because the app uses the narrow `drive.file` scope, folders and the template are
+> granted by **picking them in the Google Picker** rather than by pasting raw IDs.
+> Picking a folder grants the app access to that folder and its contents; nothing
+> else in your Drive is reachable.
 
 > To bake in your own template, paste its ID into the `BAKED.templateId` constant in `js/config.js`. To change the baked Client ID, edit `BAKED.clientId` in the same file.
 
