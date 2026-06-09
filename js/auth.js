@@ -16,31 +16,38 @@ function notify() {
   for (const fn of listeners) fn(Boolean(accessToken));
 }
 
-// Persist the token so the session survives a browser restart (within its
-// ~1h lifetime). It's short-lived; after expiry getToken() refreshes silently.
+// Persist the token in sessionStorage so the session survives a page reload
+// (within its ~1h lifetime) but is NOT written to long-term disk and is cleared
+// automatically when the browser/tab is closed — shrinking the window in which a
+// leaked token could be reused. It's short-lived; after expiry getToken()
+// refreshes silently.
 function persistToken() {
   try {
     if (accessToken && Date.now() < tokenExpiry) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ accessToken, tokenExpiry }));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ accessToken, tokenExpiry }));
     } else {
-      localStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(STORAGE_KEY);
     }
   } catch { /* storage unavailable — degrade to in-memory only */ }
 }
 
 function restoreToken() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const { accessToken: tok, tokenExpiry: exp } = JSON.parse(raw);
     if (tok && typeof exp === 'number' && Date.now() < exp) {
       accessToken = tok;
       tokenExpiry = exp;
     } else {
-      localStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(STORAGE_KEY);
     }
   } catch { /* ignore malformed/unavailable storage */ }
 }
+
+// One-time migration: scrub any token persisted to localStorage by older
+// versions so it no longer lingers on disk.
+try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
 
 restoreToken();
 

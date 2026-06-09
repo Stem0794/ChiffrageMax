@@ -115,7 +115,7 @@ No build step: files are served as-is.
 |---|---|
 | `index.html` | Page structure (login, navigation, dashboard, statistics, modals). |
 | `css/styles.css` | Dark theme and styles. |
-| `js/auth.js` | OAuth GIS; token persisted in localStorage (survives browser restart). |
+| `js/auth.js` | OAuth GIS; token kept in sessionStorage (survives reloads, cleared when the browser closes). |
 | `js/api.js` | Sheets/Drive REST calls, rate limiter, `429` retries. |
 | `js/config.js` | Local config (clientId) and Drive serialisation. |
 | `js/drive-config.js` | Config persistence in `ChiffrageMax-Config.json`. |

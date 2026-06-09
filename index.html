@@ -2,6 +2,22 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
+  <!-- Content-Security-Policy: defense-in-depth against XSS. Scripts may only
+       load from this origin and Google Identity Services; data may only be sent
+       to Google's OAuth and Sheets/Drive API endpoints. 'unsafe-inline' is kept
+       for styles only (the UI sets many inline style properties), not scripts. -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' https://accounts.google.com;
+    frame-src https://accounts.google.com;
+    connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://sheets.googleapis.com;
+    img-src 'self' data: https:;
+    style-src 'self' 'unsafe-inline';
+    font-src 'self';
+    base-uri 'self';
+    object-src 'none';
+    form-action 'self';
+  " />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ChiffrageMax</title>
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />

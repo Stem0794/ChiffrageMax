@@ -246,7 +246,7 @@ In practice, a portfolio of several hundred quotes reloads without hitting quota
 
 - **No data leaves the company's Google ecosystem**: ChiffrageMax has no server. Calls go from the browser directly to Google APIs.
 - **OAuth Client ID**: public by nature (travels in plaintext in every OAuth request) — it is **not a secret**. Access is protected by each user's Google sign-in and by the **Drive sharing** permissions you grant.
-- **Access token**: short-lived (~1 h), stored in `localStorage`, silently refreshed. Sign-out revokes it.
+- **Access token**: short-lived (~1 h), stored in `sessionStorage` (cleared when the browser closes, never written to long-term disk), silently refreshed. Sign-out revokes it.
 - **Access control**: to revoke someone's access, remove them from the Drive shares (client folders + template + shared config) — just like any Google file.
 - In **Internal** consent mode, only accounts in your Workspace can sign in at all.
 
