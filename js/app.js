@@ -1113,13 +1113,13 @@ body{background:#e2e8f0;font-family:Arial,Helvetica,sans-serif}
 }
 </style></head><body>
 ${svgs.map((s) => `<div class="page">${s}</div>`).join('')}
-<script>setTimeout(()=>window.print(),400);</script>
 </body></html>`;
 
   const win = window.open('', '_blank', 'width=980,height=680');
   if (!win) { toast('Autorisez les popups pour exporter en PDF.', 'error'); return; }
   win.document.write(html);
   win.document.close();
+  setTimeout(() => win.print(), 400);
 }
 
 /* ---- Timeline JSON export/import (sharing with colleagues) ---- */
