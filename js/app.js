@@ -87,6 +87,10 @@ function escHtml(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function icon(name) {
+  return `<svg class="icon icon-${name}" aria-hidden="true" focusable="false"><use href="#icon-${name}"></use></svg>`;
+}
+
 /* ---- Drive config sync ---- */
 async function syncFromDrive() {
   $('userStatus').textContent = 'Synchronisation…';
@@ -295,7 +299,7 @@ function renderFilters() {
     archPill.style.color = '#d1d5db';
     archPill.style.borderColor = '#374151';
   }
-  archPill.textContent = archivedLoading ? '⏳ Archivés…' : '🗃 Archivés';
+  archPill.innerHTML = `${archivedLoading ? icon('clock') : icon('archive')} Archivés${archivedLoading ? '…' : ''}`;
   archPill.addEventListener('click', () => {
     if (showArchived) {
       showArchived = false;
@@ -625,7 +629,7 @@ function renderTimeline() {
     empty.className = 'timeline-empty';
     empty.innerHTML = timelineClient
       ? `Aucun projet dans la timeline pour « ${escHtml(timelineClient)} ».`
-      : 'Aucun projet dans la timeline.<br>Ajoutez-en un via le bouton 🗓 sur une ligne du tableau de bord.';
+      : `Aucun projet dans la timeline.<br>Ajoutez-en un via le bouton ${icon('calendar')} sur une ligne du tableau de bord.`;
     host.appendChild(empty);
     return;
   }
@@ -1163,20 +1167,25 @@ function updateSortHeaders() {
     const field = th.dataset.sort;
     const label = th.dataset.label;
     const active = field === sortField;
-    th.textContent = active ? `${label} ${sortAsc ? '↑' : '↓'}` : label;
+    th.innerHTML = active ? `${escHtml(label)} ${icon(sortAsc ? 'chevron-up' : 'chevron-down')}` : escHtml(label);
     th.classList.toggle('th-sort-active', active);
   });
 }
 
 function parseDate(str) {
   if (!str) return 0;
-  const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const value = String(str).trim();
+  const m = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) {
-    const [, a, b, y] = m;
-    if (Number(a) > 12) return new Date(Number(y), Number(b) - 1, Number(a)).getTime();
-    return new Date(Number(y), Number(a) - 1, Number(b)).getTime();
+    // App dates are displayed and stored as DD/MM/YYYY. Treat ambiguous
+    // values such as 07/03/2026 as 7 March, not July 3.
+    const [, day, month, year] = m.map(Number);
+    const timestamp = Date.UTC(year, month - 1, day);
+    const parsed = new Date(timestamp);
+    if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) return 0;
+    return timestamp;
   }
-  const d = new Date(str);
+  const d = new Date(value);
   return isNaN(d.getTime()) ? 0 : d.getTime();
 }
 
@@ -1305,28 +1314,28 @@ function renderTable() {
     const inTimeline = Boolean(Config.getTimelineEntry(ch.id));
     const btnTl = document.createElement('button');
     btnTl.className = `btn btn-sm${inTimeline ? ' in-timeline' : ''}`;
-    btnTl.textContent = '🗓';
+    btnTl.innerHTML = icon('calendar');
     btnTl.title = inTimeline ? 'Modifier le planning timeline' : 'Ajouter à la timeline';
     btnTl.addEventListener('click', () => openTimelineModal(ch));
     tdDel.appendChild(btnTl);
     if (showArchived) {
       const btnUnarch = document.createElement('button');
       btnUnarch.className = 'btn btn-sm';
-      btnUnarch.textContent = '📤';
+      btnUnarch.innerHTML = icon('upload');
       btnUnarch.title = 'Désarchiver (remettre dans le tableau de bord)';
       btnUnarch.addEventListener('click', () => onUnarchiveChiffrage(ch, btnUnarch));
       tdDel.appendChild(btnUnarch);
     } else {
       const btnArch = document.createElement('button');
       btnArch.className = 'btn btn-sm';
-      btnArch.textContent = '🗃';
+      btnArch.innerHTML = icon('archive');
       btnArch.title = 'Archiver (masquer du tableau de bord)';
       btnArch.addEventListener('click', () => onArchiveChiffrage(ch, btnArch));
       tdDel.appendChild(btnArch);
     }
     const btnDel = document.createElement('button');
     btnDel.className = 'btn btn-sm btn-delete';
-    btnDel.textContent = '🗑';
+    btnDel.innerHTML = icon('trash');
     btnDel.title = 'Supprimer définitivement ce chiffrage (Google Sheet)';
     btnDel.addEventListener('click', () => onDeleteChiffrage(ch, btnDel));
     tdDel.appendChild(btnDel);
@@ -1507,10 +1516,8 @@ function toDateInputValue(str) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
   const parts = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (parts) {
-    const [, a, b, y] = parts;
-    const na = Number(a), nb = Number(b);
-    if (na > 12) return `${y}-${b.padStart(2, '0')}-${a.padStart(2, '0')}`;
-    if (nb > 12) return `${y}-${a.padStart(2, '0')}-${b.padStart(2, '0')}`;
+    const [, day, month, year] = parts;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
   const d = new Date(str);
   return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
@@ -1731,7 +1738,7 @@ function renderPhaseRows() {
       <span class="phase-row-label">Phase ${i + 1}</span>
       <input type="number" min="1" max="50" value="${p.items}" data-idx="${i}" />
       <span class="phase-row-unit">ligne(s)</span>
-      <button type="button" class="btn btn-del" data-idx="${i}" ${phasesData.length === 1 ? 'disabled' : ''}>✕</button>
+      <button type="button" class="btn btn-del" data-idx="${i}" ${phasesData.length === 1 ? 'disabled' : ''}>${icon('close')}</button>
     `;
     row.querySelector('input').addEventListener('input', (e) => {
       const v = parseInt(e.target.value, 10);
@@ -1800,12 +1807,12 @@ async function createChiffrage() {
     return;
   }
   if (!Config.get('templateId')) {
-    errEl.textContent = 'Configurez l\'ID du modèle dans les paramètres (⚙️).';
+    errEl.textContent = 'Configurez l\'ID du modèle dans les paramètres.';
     errEl.classList.remove('hidden');
     return;
   }
   if (!targetFolderId && !Config.get('rootFolderId')) {
-    errEl.textContent = `Aucun dossier Drive configuré pour « ${client} ». Ajoutez ce client dans ⚙️ Configuration.`;
+    errEl.textContent = `Aucun dossier Drive configuré pour « ${client} ». Ajoutez ce client dans les paramètres.`;
     errEl.classList.remove('hidden');
     return;
   }
@@ -1874,8 +1881,8 @@ function renderClientRow(row, c, editing) {
     row.innerHTML = `
       <input class="input-sm client-edit-name" type="text" value="${escHtml(c.name)}" placeholder="Nom du client" style="min-width:100px;flex:0 0 auto" />
       <input class="input-sm input-sm--grow client-edit-folder" type="text" value="${escHtml(c.folderId)}" placeholder="URL ou ID du dossier Drive" />
-      <button class="btn btn-sm btn-primary" data-save>✓</button>
-      <button class="btn btn-sm btn-ghost" data-cancel>✕</button>
+      <button class="btn btn-sm btn-primary" data-save>${icon('check')}</button>
+      <button class="btn btn-sm btn-ghost" data-cancel>${icon('close')}</button>
     `;
     row.querySelector('[data-save]').addEventListener('click', async () => {
       const newName = row.querySelector('.client-edit-name').value.trim();
@@ -1899,9 +1906,9 @@ function renderClientRow(row, c, editing) {
       <span class="client-name">${escHtml(c.name)}</span>
       <span class="client-folder" title="${escHtml(c.folderId)}">${escHtml(c.folderId)}</span>
       ${badge}
-      <button class="btn btn-sm" data-edit title="Modifier">✏️</button>
-      <button class="btn btn-sm" data-roles title="Configurer les rôles et TJM">💰</button>
-      <button class="btn btn-sm" data-delete title="Supprimer">✕</button>
+      <button class="btn btn-sm" data-edit title="Modifier">${icon('pencil')}</button>
+      <button class="btn btn-sm" data-roles title="Configurer les rôles et TJM">${icon('cash')}</button>
+      <button class="btn btn-sm" data-delete title="Supprimer">${icon('trash')}</button>
     `;
     row.querySelector('[data-edit]').addEventListener('click', () => renderClientRow(row, c, true));
     row.querySelector('[data-roles]').addEventListener('click', () => openRolesModal(c.name));
@@ -1999,7 +2006,7 @@ function renderRoleModalRows(roles) {
       <input type="text"   class="input-sm rm-name"    value="${escHtml(r.name)}"  placeholder="Nom du rôle" />
       <input type="number" class="input-sm rm-rate"    value="${r.rate}"           placeholder="${DEFAULT_ROLES[i]?.rate ?? ''}" min="0" step="10" />
       <span class="tjm-unit">€/j</span>
-      <button type="button" class="btn btn-sm btn-ghost rm-reset" title="Réinitialiser aux valeurs par défaut">↩</button>
+      <button type="button" class="btn btn-sm btn-ghost rm-reset" title="Réinitialiser aux valeurs par défaut">${icon('refresh')}</button>
     `;
     const cbx = row.querySelector('.rm-enabled');
     cbx.addEventListener('change', () => row.classList.toggle('role-disabled', !cbx.checked));

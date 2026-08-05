@@ -7,11 +7,11 @@ const TIMELINE_KEY = 'chiffragemax.timeline';
 // secrets: a web OAuth Client ID is public by design (it travels in plaintext
 // in every OAuth request), and a Sheet ID is just a file identifier. Access is
 // still gated by Google sign-in and by who the template Sheet is shared with.
-// Users can override either value in ⚙️ Configuration; their entry wins.
+// Users can override either value in the settings; their entry wins.
 //
 // For a PUBLIC fork/deploy, leave these EMPTY: each deployer should ship their
 // own Google Cloud OAuth Client ID and template Sheet (or let each user enter
-// them in ⚙️ Configuration). Do NOT embed your personal project's Client ID
+// them in the settings). Do NOT embed your personal project's Client ID
 // here when publishing the repo — it would route strangers' OAuth traffic and
 // API quota through your Google Cloud project.
 const BAKED = {

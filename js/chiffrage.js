@@ -307,7 +307,7 @@ export async function nouveauChiffrage(entry) {
   try {
     model = await getModelSheet();
   } catch (e) {
-    throw new Error(`Modèle introuvable : ${e.message} — Vérifiez l'ID du modèle dans ⚙️ Configuration.`);
+    throw new Error(`Modèle introuvable : ${e.message} — Vérifiez l'ID du modèle dans les paramètres.`);
   }
 
   // Create via Drive API (not Sheets API) so the file is registered in the

@@ -29,6 +29,25 @@ a:visited { color: #a18aff; }
 
 .hidden { display: none !important; }
 
+/* SVG icons are bundled in index.html so the UI does not depend on emoji
+   fonts, browser glyph coverage, or a third-party icon package. */
+.icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.icon {
+  display: inline-block;
+  width: 1em; height: 1em;
+  flex: 0 0 auto;
+  vertical-align: -.16em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.logo .icon { width: 22px; height: 22px; vertical-align: -.25em; }
+.login-logo .icon { width: 48px; height: 48px; }
+.btn, .link-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.th-sortable .icon { width: 12px; height: 12px; vertical-align: -.12em; }
+
 .topbar {
   display: flex;
   align-items: center;
@@ -707,6 +726,7 @@ label input, label select, .input-full {
   display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px;
 }
 .cfg-share-icon { font-size: 22px; flex-shrink: 0; line-height: 1; }
+.cfg-share-icon .icon { width: 22px; height: 22px; vertical-align: -.2em; }
 .cfg-share-card-title { font-size: 13px; font-weight: 600; color: var(--ink); }
 .cfg-share-card-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
@@ -724,7 +744,10 @@ label input, label select, .input-full {
 }
 .cfg-advanced > summary::-webkit-details-marker { display: none; }
 .cfg-advanced > summary::before {
-  content: '▶'; font-size: 9px; color: var(--muted);
+  content: ''; width: 0; height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--muted);
   transition: transform .15s; flex-shrink: 0;
 }
 .cfg-advanced[open] > summary::before { transform: rotate(90deg); }
