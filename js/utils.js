@@ -50,6 +50,46 @@ export function formatDateParts(date) {
   };
 }
 
+// Format a Date as the value expected by an <input type="date"> without
+// converting through UTC (which would shift the day in western time zones).
+export function formatDateInput(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// Parse the date formats used by the app into a local Date. Date-only values
+// are constructed from components so they remain stable around DST and UTC
+// boundaries. Slash dates are French day-first values (DD/MM/YYYY).
+export function parseDateText(value) {
+  if (!value) return null;
+  const text = String(value).trim();
+  let year;
+  let month;
+  let day;
+  let match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (match) {
+    [, year, month, day] = match.map(Number);
+  } else {
+    match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
+    if (match) {
+      const [, first, second, parsedYear] = match.map(Number);
+      // Ambiguous slash values are deliberately day-first. If one component
+      // makes that impossible, accept the unambiguous month/day spelling.
+      day = first > 12 ? first : (second > 12 ? second : first);
+      month = first > 12 ? second : (second > 12 ? first : second);
+      year = parsedYear;
+    }
+  }
+  if (year !== undefined) {
+    const date = new Date(year, month - 1, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+    return date;
+  }
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export function cleanProjectName(projet) {
   return String(projet).substring(0, 100).replace(/[\\/:*?[\]]/g, ' ').trim();
 }

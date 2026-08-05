@@ -74,9 +74,9 @@
       <p class="login-desc">Gérez vos chiffrages directement depuis Google Drive.<br>Aucune donnée ne transite par un serveur externe.</p>
       <button id="btnSignIn" class="btn btn-primary btn-lg">Se connecter avec Google</button>
       <p class="login-hint">
-        Connectez-vous avec votre compte Google : aucune configuration n'est requise.<br>
-        Aucun secret n'est présent dans le code source public. Vos préférences restent <strong>locales à votre navigateur</strong> (localStorage).
-        Personnalisez si besoin via <button id="openSettingsFromLogin" class="link-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-settings"></use></svg> Configuration</button>.
+        Première utilisation ? Cliquez sur <button id="openSettingsFromLogin" class="link-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-settings"></use></svg> Configuration</button> pour renseigner votre Client ID Google, le modèle Sheets et le dossier Drive.
+        Un guide vous indique exactement où trouver chaque information.<br>
+        La configuration est synchronisée dans votre Drive après connexion ; aucune donnée ne transite par un serveur applicatif.
       </p>
     </div>
   </div>
@@ -192,21 +192,38 @@
     <div class="modal-card modal-card--tall modal-card--wide">
       <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-settings"></use></svg> Configuration</h2>
 
-      <!-- First-run guide — shown by JS when template or clients are missing -->
+      <!-- First-run guide — shown by JS when the connection or data setup is incomplete -->
       <div id="setupGuide" class="setup-guide hidden">
-        <div class="setup-guide-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-info"></use></svg> Bienvenue dans ChiffrageMax !</div>
-        <ol class="setup-steps">
-          <li>Renseignez l'<strong>ID du modèle</strong> Google Sheets (section 1 ci-dessous)</li>
-          <li>Ajoutez au moins un <strong>client</strong> avec son dossier Drive (section 2)</li>
-          <li>Fermez cette fenêtre et cliquez sur <strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg> Nouveau chiffrage</strong></li>
+        <div class="setup-guide-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-info"></use></svg> Première connexion : 3 éléments à préparer</div>
+        <p class="setup-guide-intro">Pour connecter ChiffrageMax à Google Drive, suivez ces étapes dans l'ordre. Vous pouvez coller une URL complète : l'application récupère automatiquement l'identifiant.</p>
+        <ol class="setup-checklist">
+          <li><span class="setup-check-number">1</span><div><strong>Client ID Google</strong><small>Dans Google Cloud, activez Google Drive API et Google Sheets API, puis créez un identifiant dans APIs et services → Identifiants.</small><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Ouvrir Google Cloud</a></div></li>
+          <li><span class="setup-check-number">2</span><div><strong>Modèle Google Sheets</strong><small>Le fichier modèle à copier pour chaque nouveau chiffrage. Partagez-le en lecture avec votre compte.</small><a href="https://drive.google.com/" target="_blank" rel="noopener noreferrer">Ouvrir Google Drive</a></div></li>
+          <li><span class="setup-check-number">3</span><div><strong>Dossier Drive client</strong><small>Ajoutez au moins un client avec son dossier dans « Clients et dossiers Drive ». Le dossier racine est un secours facultatif.</small><a href="https://drive.google.com/drive/my-drive" target="_blank" rel="noopener noreferrer">Créer ou choisir un dossier</a></div></li>
         </ol>
-        <p class="setup-guide-sub">Si votre équipe utilise déjà ChiffrageMax, demandez l'<strong>ID de configuration</strong> à un collègue et collez-le dans la section "Rejoindre une équipe" (section 3).</p>
+        <p class="setup-guide-sub">Après avoir rempli les champs requis, cliquez sur <strong>Enregistrer</strong>, puis sur <strong>Se connecter avec Google</strong>. Si un collègue a déjà configuré l'équipe, utilisez directement l'ID de configuration partagée plus bas.</p>
       </div>
 
-      <!-- 1 — Template -->
-      <div class="cfg-section">
+      <!-- 1 — Google connection -->
+      <div class="cfg-section cfg-connection-section">
         <h3 class="cfg-section-title">
           <span class="cfg-step-badge">1</span>
+          Connexion Google
+          <span class="cfg-badge cfg-badge--required">requis</span>
+        </h3>
+        <p class="cfg-section-desc">Le Client ID autorise l'application à demander l'accès à Google Drive et Google Sheets. S'il est déjà prérempli, laissez-le tel quel.</p>
+        <label>Client ID OAuth Google
+          <input id="cfgClientId" type="text" placeholder="ex: 1234567890-abc…apps.googleusercontent.com" autocomplete="off" />
+          <span class="field-hint">Dans Google Cloud : activez Google Drive API et Google Sheets API, puis APIs et services → Identifiants → ID client OAuth 2.0 → Application Web. Ajoutez l'URL de cette application dans « Origines JavaScript autorisées ».</span>
+        </label>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- 2 — Template -->
+      <div class="cfg-section">
+        <h3 class="cfg-section-title">
+          <span class="cfg-step-badge">2</span>
           Modèle de chiffrage
           <span class="cfg-badge cfg-badge--required">requis</span>
         </h3>
@@ -222,10 +239,10 @@
 
       <hr class="divider" />
 
-      <!-- 2 — Clients -->
+      <!-- 3 — Clients -->
       <div class="cfg-section">
         <h3 class="cfg-section-title">
-          <span class="cfg-step-badge">2</span>
+          <span class="cfg-step-badge">3</span>
           Clients et dossiers Drive
         </h3>
         <p class="cfg-section-desc">Chaque client peut avoir son propre dossier Drive racine. Configurez aussi les rôles et TJM par client via le bouton <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-cash"></use></svg>.</p>
@@ -239,10 +256,10 @@
 
       <hr class="divider" />
 
-      <!-- 3 — Team sync -->
+      <!-- 4 — Team sync -->
       <div class="cfg-section">
         <h3 class="cfg-section-title">
-          <span class="cfg-step-badge">3</span>
+          <span class="cfg-step-badge">4</span>
           Synchronisation avec l'équipe
           <span class="cfg-badge cfg-badge--optional">optionnel</span>
         </h3>
@@ -282,18 +299,7 @@
 
       <hr class="divider" />
 
-      <!-- Advanced — collapsed by default -->
-      <details class="cfg-advanced">
-        <summary>Paramètres avancés — OAuth Client ID</summary>
-        <div class="cfg-advanced-body">
-          <label>OAuth Client ID Google
-            <input id="cfgClientId" type="text" placeholder="xxxxx.apps.googleusercontent.com" />
-            <span class="field-hint">Pré-rempli avec l'identifiant intégré à l'app — laissez tel quel pour démarrer. Modifiez uniquement si vous utilisez votre propre projet Google Cloud (pensez alors à ajouter l'URL de cette page aux origines JavaScript autorisées).</span>
-          </label>
-        </div>
-      </details>
-
-      <p class="hint" style="margin-top:14px;padding:0">Toutes les valeurs sont stockées uniquement dans votre navigateur (localStorage). Rien ne transite par un serveur externe.</p>
+      <p class="hint" style="margin-top:14px;padding:0">La configuration est stockée dans votre Drive et mise en cache localement pour accélérer l'affichage. Les données locales sont effacées lors de la déconnexion.</p>
 
       <div class="modal-actions">
         <button id="btnSaveSettings" class="btn btn-primary">Enregistrer</button>

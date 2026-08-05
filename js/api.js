@@ -42,7 +42,7 @@ async function gfetch(url, options = {}, { retryOn401 = true, attempt = 0 } = {}
 
   if (res.status === 401 && retryOn401) {
     Auth.signOut();
-    return gfetch(url, options, { retryOn401: false, attempt });
+    throw new Error('Session Google expirée. Reconnectez-vous pour continuer.');
   }
 
   // Retry on 429 (quota exceeded) with exponential backoff, up to 6 attempts
@@ -218,16 +218,18 @@ export const DriveAPI = {
   async deleteFile(fileId) {
     let firstErr = null;
     try {
-      return await gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, { method: 'DELETE' });
+      await gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, { method: 'DELETE' });
+      return { mode: 'deleted' };
     } catch (e) {
       if (!/\(40[34]\)/.test(e.message)) throw e;
       firstErr = e;
     }
     try {
-      return await gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, {
+      await gfetch(`${DRIVE}/${fileId}?${DRIVE_SHARED}`, {
         method: 'PATCH',
         body: JSON.stringify({ trashed: true }),
       });
+      return { mode: 'trashed' };
     } catch {
       throw firstErr;
     }

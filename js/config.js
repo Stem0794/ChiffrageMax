@@ -1,6 +1,8 @@
 const STORAGE_KEY = 'chiffragemax.config';
 const CLIENTS_KEY = 'chiffragemax.clients';
 const TIMELINE_KEY = 'chiffragemax.timeline';
+const DASHBOARD_KEY = 'chiffragemax.dashboard';
+const FILE_CACHE_KEY = 'chiffragemax.filecache';
 
 // --- Baked-in defaults (shipped in the app) ---------------------------------
 // These let colleagues use the app without configuring anything. They are NOT
@@ -30,6 +32,21 @@ const DEFAULTS = {
 };
 
 export const Config = {
+  // Synchronized settings must not survive an account switch in the same
+  // browser. The next signed-in account will restore its own Drive config.
+  clearAccountData() {
+    let clientId = DEFAULTS.clientId;
+    try {
+      clientId = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}').clientId || clientId;
+    } catch { /* use baked default */ }
+    for (const key of [STORAGE_KEY, CLIENTS_KEY, TIMELINE_KEY, DASHBOARD_KEY, FILE_CACHE_KEY]) {
+      try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
+    }
+    if (clientId) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ clientId })); } catch { /* storage unavailable */ }
+    }
+  },
+
   load() {
     let stored = {};
     try {
@@ -43,7 +60,8 @@ export const Config = {
   },
 
   save(cfg) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...this.load(), ...cfg }));
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...this.load(), ...cfg })); }
+    catch (e) { throw new Error(`Configuration locale indisponible : ${e.message}`); }
   },
 
   get(key) {
@@ -59,14 +77,21 @@ export const Config = {
 
   getClients() {
     try {
-      return JSON.parse(localStorage.getItem(CLIENTS_KEY) || '[]');
+      const parsed = JSON.parse(localStorage.getItem(CLIENTS_KEY) || '[]');
+      return Array.isArray(parsed)
+        ? parsed
+          .filter((client) => client && typeof client === 'object' && typeof client.name === 'string')
+          .map((client) => ({ ...client, name: client.name.trim(), folderId: String(client.folderId || '') }))
+          .filter((client) => client.name)
+        : [];
     } catch {
       return [];
     }
   },
 
   saveClients(clients) {
-    localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients));
+    try { localStorage.setItem(CLIENTS_KEY, JSON.stringify(Array.isArray(clients) ? clients : [])); }
+    catch (e) { throw new Error(`Clients non sauvegardés localement : ${e.message}`); }
   },
 
   getClientFolder(clientName) {
@@ -109,6 +134,9 @@ export const Config = {
     const clients = this.getClients();
     const idx = clients.findIndex((c) => c.name.trim().toLowerCase() === oldName.trim().toLowerCase());
     if (idx >= 0) {
+      const normalized = newName.trim().toLowerCase();
+      const duplicate = clients.some((c, i) => i !== idx && c.name.trim().toLowerCase() === normalized);
+      if (duplicate) throw new Error(`Le client « ${newName.trim()} » existe déjà.`);
       clients[idx] = { ...clients[idx], name: newName.trim(), folderId: folderId.trim() };
       this.saveClients(clients);
     }
@@ -135,7 +163,8 @@ export const Config = {
   },
 
   saveTimeline(map) {
-    localStorage.setItem(TIMELINE_KEY, JSON.stringify(map || {}));
+    try { localStorage.setItem(TIMELINE_KEY, JSON.stringify(map || {})); }
+    catch (e) { throw new Error(`Timeline non sauvegardée localement : ${e.message}`); }
   },
 
   getTimelineEntry(id) {

@@ -1,7 +1,7 @@
 import { SheetsAPI, DriveAPI } from './api.js';
 import { Config } from './config.js';
 import {
-  colLetter, hexToRgb, formatDateParts, cleanProjectName, spreadsheetUrl,
+  colLetter, hexToRgb, formatDateParts, formatDateInput, cleanProjectName, spreadsheetUrl,
 } from './utils.js';
 
 const VALIDATION_STATUSES = ['Envoyé', 'Validé', 'Passé en TMA', 'Refusé', 'Annulé'];
@@ -315,6 +315,7 @@ export async function nouveauChiffrage(entry) {
   // of whether the token has full `drive` scope or the narrower `drive.file`.
   const created = await DriveAPI.createSpreadsheet(idChiffrage);
   const newId = created.id; // Drive API returns {id}, Sheets API returns {spreadsheetId}
+  try {
 
   // Fetch the default sheet ID created with the blank spreadsheet.
   const blankMeta = await SheetsAPI.get(newId, { fields: 'sheets(properties(sheetId))' });
@@ -342,7 +343,7 @@ export async function nouveauChiffrage(entry) {
 
   // Fill the header (C1:C5). Date as YYYY-MM-DD so Sheets parses it in any locale.
   // N° devis is stored in C5 so the dashboard can read it back when scanning Drive.
-  const dateValue = dateIsUnknown ? 'Unknown' : date.toISOString().split('T')[0];
+  const dateValue = dateIsUnknown ? 'Unknown' : formatDateInput(date);
   await SheetsAPI.updateValues(newId, 'Chiffrage!C1:C5', [
     [client], [projet], [ticket || ''], [dateValue], [numDevis || ''],
   ]);
@@ -376,7 +377,17 @@ export async function nouveauChiffrage(entry) {
     if (hideRequests.length) await SheetsAPI.batchUpdate(newId, hideRequests);
   }
 
-  return { id: newId, url: spreadsheetUrl(newId), idChiffrage };
+    return { id: newId, url: spreadsheetUrl(newId), idChiffrage };
+  } catch (e) {
+    // Every step after creation can fail (copy, permissions, formulas, or
+    // moving the file). Best-effort cleanup prevents orphan spreadsheets.
+    try { await DriveAPI.deleteFile(newId); }
+    catch (cleanupError) {
+      console.warn('Nettoyage du fichier créé impossible :', cleanupError.message);
+      throw new Error(`${e.message} Le fichier ${newId} doit être supprimé manuellement.`);
+    }
+    throw new Error(`${e.message} Le fichier créé a été nettoyé.`);
+  }
 }
 
 /* ---------- Dashboard: scan Drive folders for chiffrage files ---------- */
@@ -531,30 +542,35 @@ export async function readChiffrageMontant(fileId, sheetName) {
 function extractMontant(data) {
   let buildCandidate = 0;
   let specificCandidate = 0;
+  let foundBuild = false;
+  let foundSpecific = false;
   for (let i = 0; i < data.length; i++) {
     const row = data[i] || [];
     for (let j = 0; j < row.length; j++) {
       const c = String(row[j]).toUpperCase();
       if (!c.includes('TOTAL') || !c.includes('WITHOUT VAT')) continue;
-      let amount = 0;
+      let amount = null;
       for (let k = j + 1; k < row.length; k++) {
         const val = parseAmount(row[k]);
-        if (val > 0) { amount = val; break; }
+        if (val !== null) { amount = val; break; }
       }
-      if (!amount) continue;
-      if (c.includes('BUILD') && !c.replace('BUILD', '').match(/[A-Z]{3,}/)) buildCandidate = amount;
-      else specificCandidate = amount;
+      if (amount === null) continue;
+      if (c.includes('BUILD') && !c.replace('BUILD', '').match(/[A-Z]{3,}/)) {
+        buildCandidate = amount; foundBuild = true;
+      } else {
+        specificCandidate = amount; foundSpecific = true;
+      }
     }
   }
-  return specificCandidate || buildCandidate;
+  return foundSpecific ? specificCandidate : (foundBuild ? buildCandidate : null);
 }
 
 function parseAmount(val) {
-  if (typeof val === 'number') return val;
-  if (val == null) return 0;
-  // Strip currency symbols and whitespace, keep digits and separators only.
-  let s = String(val).replace(/[€$£%\s]/g, '').replace(/[^\d.,]/g, '');
-  if (!s) return 0;
+  if (typeof val === 'number') return Number.isFinite(val) ? val : null;
+  if (val == null) return null;
+  // Strip currency symbols and whitespace, preserving a leading minus sign.
+  let s = String(val).trim().replace(/[€$£%\s]/g, '').replace(/(?!^)-|[^\d.,-]/g, '');
+  if (!s || s === '-') return null;
 
   const commas  = (s.match(/,/g) || []).length;
   const periods = (s.match(/\./g) || []).length;
@@ -578,7 +594,7 @@ function parseAmount(val) {
   // Single period: standard decimal — no change needed.
 
   const n = parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n) ? n : null;
 }
 
 // List all chiffrages, loading one client folder at a time to avoid Sheets API
@@ -701,5 +717,5 @@ export async function setChiffrageStatus(fileId, sheetName, statusRow, status) {
 
 // Permanently delete a chiffrage spreadsheet from Google Drive.
 export async function deleteChiffrage(fileId) {
-  await DriveAPI.deleteFile(fileId);
+  return DriveAPI.deleteFile(fileId);
 }

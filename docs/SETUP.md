@@ -189,20 +189,22 @@ ChiffrageMax maintains **no master spreadsheet**: it **scans Drive folders** for
    The `year` and `year-month` subfolders are **created automatically** as needed.
 4. (Optional) A **root fallback folder** is used when a client has no dedicated folder.
 
-> 🗃 **Archive** prepends `[ARCH]` to the filename: it is then skipped on future scans (zero API calls). 🗑 **Delete** permanently removes the Sheet.
+> **Archive** prepends `[ARCH]` to the filename: it is then skipped on future scans (zero API calls). **Delete** permanently removes the Sheet when permitted, otherwise it moves it to the Drive trash.
 
 ---
 
 ## 6. First in-app configuration (⚙️)
 
-Each user (or the admin — see §7 for sharing) opens the app, signs in with their Google account, opens **⚙️ Settings**, and fills in:
+Each user (or the admin — see §7 for sharing) opens the app, opens **Settings** before the first sign-in, and fills in:
 
 1. **OAuth Client ID** — the Client ID from step 2.4 *(pre-filled if baked in)*.
 2. **Template ID** — the `ModeleChiffrage` Sheet ID (§4.3). A full URL is accepted.
 3. **Root Drive folder (fallback)** — the fallback folder ID (optional).
-4. **Clients** — for each client: a **name** + their **Drive folder ID** (§5). The **💰** button opens the **roles and day rates** config for that client (up to 11 roles, columns B→L), applied automatically to every new quote for that client.
+4. **Clients** — for each client: a **name** + their **Drive folder ID** (§5). The **day-rate** button opens the **roles and day rates** config for that client (up to 11 roles, columns B→L), applied automatically to every new quote for that client.
 
 The config is saved to `ChiffrageMax-Config.json` in the user's Drive, so it follows them across devices.
+
+> The shared configuration ID replaces the template and client entries, not the OAuth Client ID. Every browser still needs the Client ID and the app URL must be an authorized JavaScript origin.
 
 ---
 

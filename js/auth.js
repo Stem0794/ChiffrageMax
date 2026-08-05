@@ -10,6 +10,7 @@ const STORAGE_KEY = 'chiffragemax.token';
 let tokenClient = null;
 let accessToken = null;
 let tokenExpiry = 0;
+let tokenRequest = null;
 const listeners = new Set();
 
 function notify() {
@@ -69,7 +70,11 @@ function ensureClient() {
 }
 
 function requestToken({ prompt } = {}) {
-  return new Promise((resolve, reject) => {
+  // GIS only supports one callback per token client. Serialise concurrent
+  // callers (several API requests can notice an expired token together) so a
+  // later callback cannot replace an earlier request and leave it hanging.
+  if (tokenRequest) return tokenRequest;
+  tokenRequest = new Promise((resolve, reject) => {
     const client = ensureClient();
     client.callback = (resp) => {
       if (resp.error) {
@@ -87,7 +92,8 @@ function requestToken({ prompt } = {}) {
     } catch (e) {
       reject(e);
     }
-  });
+  }).finally(() => { tokenRequest = null; });
+  return tokenRequest;
 }
 
 export const Auth = {

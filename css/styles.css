@@ -683,8 +683,15 @@ label input, label select, .input-full {
   margin-bottom: 20px;
 }
 .setup-guide-title { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 10px; }
+.setup-guide-intro { margin: -2px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .setup-steps { margin: 0 0 10px; padding-left: 20px; color: var(--ink); font-size: 13px; line-height: 1.9; }
 .setup-steps strong { color: #93c5fd; }
+.setup-checklist { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.setup-checklist li { display: flex; align-items: flex-start; gap: 10px; color: var(--ink); font-size: 12px; line-height: 1.45; }
+.setup-check-number { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex: 0 0 20px; border-radius: 50%; background: #24446f; color: #bfdbfe; font-size: 11px; font-weight: 700; }
+.setup-checklist strong { display: block; color: #bfdbfe; font-size: 13px; }
+.setup-checklist small { display: block; color: var(--muted); margin: 2px 0; }
+.setup-checklist a { color: #93c5fd; font-size: 11px; text-decoration: underline; }
 .setup-guide-sub {
   margin: 0; font-size: 12px; color: var(--muted);
   border-top: 1px solid #2d3f6b; padding-top: 10px;

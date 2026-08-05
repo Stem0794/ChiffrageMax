@@ -6,7 +6,12 @@ import {
   nouveauChiffrage, listChiffrages, listArchivedChiffrages, readChiffrageFile, readChiffrageMontant,
   setChiffrageStatus, deleteChiffrage, resolveMonthFolder, STATUS_OPTIONS,
 } from './chiffrage.js';
-import { extractSpreadsheetId, extractFolderId, cleanProjectName } from './utils.js';
+import {
+  extractSpreadsheetId, extractFolderId, cleanProjectName, formatDateInput, parseDateText,
+} from './utils.js';
+import {
+  isValidTimelineEntry, normalizeTimelineData, removeArchiveSuffix, removeQuoteFromState,
+} from './state-helpers.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -115,8 +120,10 @@ async function syncFromDrive() {
 async function saveConfigToDrive() {
   try {
     await DriveConfig.save(Config.toDriveData());
+    return true;
   } catch (e) {
     toast(`Config non sauvegardée dans Drive : ${e.message}`, 'error');
+    return false;
   }
 }
 
@@ -131,6 +138,7 @@ function showApp(signedIn) {
 Auth.onChange(async (signedIn) => {
   if (!signedIn) {
     DriveConfig.reset();
+    Config.clearAccountData();
     clearStoredDashboard();
     showApp(false);
     return;
@@ -587,10 +595,8 @@ let tlEditTarget = null;
 
 const pad2 = (n) => String(n).padStart(2, '0');
 function tlParse(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
-  if (!m) return null;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  return isNaN(d.getTime()) ? null : d;
+  const d = parseDateText(s);
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? d : null;
 }
 function quarterIndex(d) { return d.getFullYear() * 4 + Math.floor(d.getMonth() / 3); }
 function startOfQuarter(d) { return new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1); }
@@ -602,7 +608,7 @@ function phaseDateLabel(start, end) {
 }
 
 function timelineEntries() {
-  let arr = Object.values(Config.getTimeline());
+  let arr = Object.values(Config.getTimeline()).filter(isValidTimelineEntry);
   if (timelineClient) {
     const key = timelineClient.trim().toLowerCase();
     arr = arr.filter((e) => (e.client || '').trim().toLowerCase() === key);
@@ -841,7 +847,7 @@ function renderTlPhaseRows(phases) {
     });
   });
   c.querySelectorAll('.tl-date-input').forEach((input) => {
-    // Paste normalisation: accept dd/mm/yyyy, mm/dd/yyyy or yyyy-mm-dd pasted
+    // Paste normalisation: accept day-first dd/mm/yyyy or yyyy-mm-dd pasted
     // from any source (including another date field in this modal).
     input.addEventListener('paste', (e) => {
       e.preventDefault();
@@ -871,7 +877,7 @@ function renderTlPhaseRows(phases) {
   });
 }
 
-function saveTimelineEntry() {
+async function saveTimelineEntry() {
   if (!tlEditTarget) return;
   const rows = $('tlPhaseRows').querySelectorAll('.tl-phase-row');
   const phases = {};
@@ -899,22 +905,41 @@ function saveTimelineEntry() {
     return;
   }
   const label = tlEditTarget.projet || tlEditTarget.label || tlEditTarget.name || '';
-  Config.setTimelineEntry(tlEditTarget.id, { label, client: tlEditTarget.client || '', phases });
+  let persisted = true;
+  try {
+    Config.setTimelineEntry(tlEditTarget.id, { label, client: tlEditTarget.client || '', phases });
+    persisted = await saveConfigToDrive();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('hidden');
+    return;
+  }
   closeModal('timelineModal');
-  toast('Timeline mise à jour.', 'success');
+  toast(
+    persisted ? 'Timeline mise à jour.' : 'Timeline mise à jour localement (Drive indisponible).',
+    persisted ? 'success' : 'error',
+  );
   renderTable();
   if (currentView === 'timeline') renderTimeline();
-  saveConfigToDrive();
 }
 
-function removeFromTimeline() {
+async function removeFromTimeline() {
   if (!tlEditTarget) return;
-  Config.removeTimelineEntry(tlEditTarget.id);
+  let persisted = true;
+  try {
+    Config.removeTimelineEntry(tlEditTarget.id);
+    persisted = await saveConfigToDrive();
+  } catch (e) {
+    toast(e.message, 'error');
+    return;
+  }
   closeModal('timelineModal');
-  toast('Retiré de la timeline.', 'success');
+  toast(
+    persisted ? 'Retiré de la timeline.' : 'Timeline retirée localement (Drive indisponible).',
+    persisted ? 'success' : 'error',
+  );
   renderTable();
   if (currentView === 'timeline') renderTimeline();
-  saveConfigToDrive();
 }
 
 /* ---- Timeline PDF export ---- */
@@ -1133,25 +1158,33 @@ function exportTimelineJSON() {
   if (!count) { toast('Aucune donnée de timeline à exporter.', 'error'); return; }
   const json = JSON.stringify({ timeline: tl, exportedAt: new Date().toISOString() }, null, 2);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  a.href = url;
   a.download = 'ChiffrageMax-Timeline.json';
   a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
   toast(`${count} projet(s) exporté(s) en JSON.`, 'success');
 }
 
 function importTimelineJSON(file) {
   const reader = new FileReader();
-  reader.onload = (ev) => {
+  reader.onload = async (ev) => {
     try {
       const data = JSON.parse(ev.target.result);
       const incoming = data.timeline && typeof data.timeline === 'object' && !Array.isArray(data.timeline)
         ? data.timeline : (typeof data === 'object' && !Array.isArray(data) ? data : null);
       if (!incoming) throw new Error('Format invalide (clé "timeline" introuvable).');
-      const count = Object.keys(incoming).length;
+      const normalized = normalizeTimelineData(incoming);
+      const count = Object.keys(normalized).length;
       if (!count) { toast('Le fichier ne contient aucune entrée.', 'error'); return; }
-      Config.saveTimeline({ ...Config.getTimeline(), ...incoming });
-      saveConfigToDrive();
-      toast(`${count} projet(s) importé(s) et fusionné(s).`, 'success');
+      Config.saveTimeline({ ...Config.getTimeline(), ...normalized });
+      const persisted = await saveConfigToDrive();
+      toast(
+        persisted
+          ? `${count} projet(s) importé(s) et fusionné(s).`
+          : `${count} projet(s) importé(s) localement (Drive indisponible).`,
+        persisted ? 'success' : 'error',
+      );
       if (currentView === 'timeline') renderTimeline();
       renderTable();
     } catch (ex) {
@@ -1173,20 +1206,8 @@ function updateSortHeaders() {
 }
 
 function parseDate(str) {
-  if (!str) return 0;
-  const value = String(str).trim();
-  const m = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) {
-    // App dates are displayed and stored as DD/MM/YYYY. Treat ambiguous
-    // values such as 07/03/2026 as 7 March, not July 3.
-    const [, day, month, year] = m.map(Number);
-    const timestamp = Date.UTC(year, month - 1, day);
-    const parsed = new Date(timestamp);
-    if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) return 0;
-    return timestamp;
-  }
-  const d = new Date(value);
-  return isNaN(d.getTime()) ? 0 : d.getTime();
+  const d = parseDateText(str);
+  return d ? d.getTime() : 0;
 }
 
 function visibleChiffrages() {
@@ -1353,7 +1374,7 @@ function cell(value) {
 
 function formatMontant(v) {
   const n = typeof v === 'number' ? v : Number(v);
-  if (!Number.isFinite(n) || n === 0) return '—';
+  if (!Number.isFinite(n)) return '—';
   return n.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' €';
 }
 
@@ -1364,6 +1385,7 @@ async function refreshMontant(ch, td) {
   try {
     ch.montant = await readChiffrageMontant(ch.id, ch.sheetName);
     td.textContent = formatMontant(ch.montant);
+    storeDashboard(chiffrages);
   } catch (e) {
     td.textContent = prev;
     toast(e.message, 'error');
@@ -1443,25 +1465,10 @@ const FIELD_CELL = { numDevis: 'C5', client: 'C1', projet: 'C2', ticket: 'C3', d
 // Rebuild the CHI-DD/MM/YY- Projet filename from any stored date format.
 function buildChiffrageFileName(projet, dateStr) {
   let dateId = '';
-  if (dateStr) {
-    const iso = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (iso) {
-      dateId = `${iso[3]}/${iso[2]}/${String(iso[1]).slice(-2)}`;
-    } else {
-      const parts = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      const d = parts
-        ? (() => {
-            const [, a, b, y] = parts.map(Number);
-            if (a > 12) return new Date(y, b - 1, a); // DD/MM/YYYY
-            if (b > 12) return new Date(y, a - 1, b); // M/D/YYYY
-            return new Date(y, b - 1, a);              // assume DD/MM/YYYY
-          })()
-        : new Date(dateStr);
-      if (!isNaN(d.getTime())) {
-        const pad = (n) => String(n).padStart(2, '0');
-        dateId = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${String(d.getFullYear()).slice(-2)}`;
-      }
-    }
+  const d = parseDateText(dateStr);
+  if (d) {
+    const pad = (n) => String(n).padStart(2, '0');
+    dateId = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${String(d.getFullYear()).slice(-2)}`;
   }
   return dateId
     ? `CHI-${dateId}- ${cleanProjectName(projet || '')}`
@@ -1470,18 +1477,8 @@ function buildChiffrageFileName(projet, dateStr) {
 
 // Parse any stored date string into {yearStr, monthStr} for folder resolution.
 function parseDateForFolder(str) {
-  if (!str) return null;
-  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (iso) return { yearStr: iso[1], monthStr: `${iso[1]}-${iso[2]}` };
-  const parts = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (parts) {
-    const [, a, b, y] = parts.map(Number);
-    const month = a > 12 ? b : (b > 12 ? a : b); // DD/MM or M/D heuristic
-    const yearStr = String(y);
-    return { yearStr, monthStr: `${yearStr}-${String(month).padStart(2, '0')}` };
-  }
-  const d = new Date(str);
-  if (!isNaN(d.getTime())) {
+  const d = parseDateText(str);
+  if (d) {
     const yearStr = String(d.getFullYear());
     return { yearStr, monthStr: `${yearStr}-${String(d.getMonth() + 1).padStart(2, '0')}` };
   }
@@ -1491,36 +1488,58 @@ function parseDateForFolder(str) {
 async function saveField(ch, field, value) {
   const cellAddr = FIELD_CELL[field];
   if (!cellAddr) throw new Error(`Champ inconnu : ${field}`);
+  const previousValue = field === 'date' ? toDateInputValue(ch.date) : String(ch[field] ?? '');
+  let moved = false;
   await SheetsAPI.updateValues(ch.id, `${ch.sheetName}!${cellAddr}`, [[value]]);
-  if (field === 'client') {
-    const baseFolderId = Config.getClientFolder(value);
-    if (baseFolderId) {
-      const ym = parseDateForFolder(ch.date);
-      const destFolderId = ym
-        ? await resolveMonthFolder(ym.yearStr, ym.monthStr, baseFolderId)
-        : baseFolderId;
-      await DriveAPI.moveFile(ch.id, destFolderId);
+  try {
+    if (field === 'client' || field === 'date') {
+      const clientName = field === 'client' ? value : ch.client;
+      const baseFolderId = Config.getClientFolder(clientName);
+      if (baseFolderId) {
+        const ym = parseDateForFolder(field === 'date' ? value : ch.date);
+        const destFolderId = ym
+          ? await resolveMonthFolder(ym.yearStr, ym.monthStr, baseFolderId)
+          : baseFolderId;
+        await DriveAPI.moveFile(ch.id, destFolderId);
+        moved = true;
+      }
     }
-  }
-  if (field === 'projet' || field === 'date') {
-    const projet  = field === 'projet' ? value : ch.projet;
-    const dateStr = field === 'date'   ? value : ch.date;
-    const newName = buildChiffrageFileName(projet, dateStr);
-    await DriveAPI.renameFile(ch.id, newName);
-    ch.name = newName;
+    if (field === 'projet' || field === 'date') {
+      const projet  = field === 'projet' ? value : ch.projet;
+      const dateStr = field === 'date'   ? value : ch.date;
+      const newName = buildChiffrageFileName(projet, dateStr);
+      await DriveAPI.renameFile(ch.id, newName);
+      ch.name = newName;
+    }
+  } catch (driveError) {
+    // Keep the Sheet and Drive metadata aligned when the secondary Drive
+    // operation fails after the cell write. Rollback is best effort; expose a
+    // stronger message if even the compensation write is rejected.
+    try {
+      await SheetsAPI.updateValues(ch.id, `${ch.sheetName}!${cellAddr}`, [[previousValue]]);
+    } catch (rollbackError) {
+      throw new Error(`${driveError.message} (rollback impossible : ${rollbackError.message})`);
+    }
+    if (moved) {
+      try {
+        const oldFolder = Config.getClientFolder(ch.client);
+        const oldYm = parseDateForFolder(ch.date);
+        if (oldFolder) {
+          const oldDest = oldYm
+            ? await resolveMonthFolder(oldYm.yearStr, oldYm.monthStr, oldFolder)
+            : oldFolder;
+          await DriveAPI.moveFile(ch.id, oldDest);
+        }
+      } catch (moveRollbackError) {
+        throw new Error(`${driveError.message} (cellule restaurée, déplacement Drive à vérifier : ${moveRollbackError.message})`);
+      }
+    }
+    throw driveError;
   }
 }
 
 function toDateInputValue(str) {
-  if (!str) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-  const parts = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (parts) {
-    const [, day, month, year] = parts;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
-  const d = new Date(str);
-  return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+  return formatDateInput(parseDateText(str));
 }
 
 function formatDateDisplay(iso) {
@@ -1604,6 +1623,7 @@ function makeEditableCell(td, ch, field, type = 'text') {
           const nameTd = td.closest('tr')?.querySelector('td:first-child');
           if (nameTd) nameTd.textContent = ch.name;
         }
+        storeDashboard(chiffrages);
         toast('Modifié.', 'success');
         if (field === 'client') renderTable();
       } catch (e) {
@@ -1633,6 +1653,7 @@ async function onStatusChange(ch, newValue, select) {
   try {
     await setChiffrageStatus(ch.id, ch.sheetName, ch.statusRow, newValue);
     ch.status = newValue;
+    storeDashboard(chiffrages);
     toast('Statut mis à jour.', 'success');
   } catch (e) {
     toast(e.message, 'error');
@@ -1665,7 +1686,7 @@ async function onArchiveChiffrage(ch, btn) {
 async function onUnarchiveChiffrage(ch, btn) {
   busy(btn, true);
   try {
-    const newName = ch.name.replace(/\s*\[ARCH\]/g, '').trim();
+    const newName = removeArchiveSuffix(ch.name);
     await DriveAPI.renameFile(ch.id, newName);
     ch.name = newName;
     archivedChiffrages = archivedChiffrages.filter((c) => c.id !== ch.id);
@@ -1683,10 +1704,12 @@ async function onUnarchiveChiffrage(ch, btn) {
 /* ---- Delete chiffrage ---- */
 async function onDeleteChiffrage(ch, btn) {
   const label = ch.projet ? `« ${ch.projet} »` : ch.name;
-  if (!window.confirm(`Supprimer définitivement le chiffrage ${label} ?\n\nCette action supprime le Google Sheet — elle est irréversible.`)) return;
+  if (!window.confirm(`Supprimer le chiffrage ${label} ?\n\nLe fichier sera supprimé ou, selon les droits Drive, déplacé vers la corbeille.`)) return;
   busy(btn, true);
+  let result = null;
+  let dashboardOnly = false;
   try {
-    await deleteChiffrage(ch.id);
+    result = await deleteChiffrage(ch.id);
   } catch (e) {
     if (e.message.includes('404')) {
       // Drive returns 404 either because the file is truly gone OR because
@@ -1704,14 +1727,16 @@ async function onDeleteChiffrage(ch, btn) {
           + `Causes possibles :\n`
           + `• Le fichier est dans un Drive d'équipe dont vous n'êtes pas membre\n`
           + `• Votre domaine Google Workspace restreint l'API Drive pour les apps tierces\n\n`
-          + `Supprimez-le manuellement en cliquant sur "Ouvrir" (colonne Fichier), `
+          + `Ouvrez-le manuellement via ${driveUrl}, `
           + `puis faites clic droit → Déplacer vers la corbeille.\n\n`
           + `Voulez-vous le retirer du tableau de bord maintenant ?`,
         );
         if (!proceed) return;
         // Remove only from the dashboard — the Drive file is untouched.
+        dashboardOnly = true;
       } catch {
         // Sheets read also failed → file is truly gone → remove the stale row.
+        result = { mode: 'missing' };
       }
     } else {
       toast(e.message, 'error');
@@ -1719,10 +1744,27 @@ async function onDeleteChiffrage(ch, btn) {
       return;
     }
   }
-  chiffrages = chiffrages.filter((c) => c.id !== ch.id);
+  const next = removeQuoteFromState({
+    active: chiffrages,
+    archived: archivedChiffrages,
+    timeline: Config.getTimeline(),
+  });
+  chiffrages = next.active;
+  archivedChiffrages = next.archived;
+  if (!dashboardOnly) {
+    try { Config.saveTimeline(next.timeline); }
+    catch (e) { toast(`Timeline locale non mise à jour : ${e.message}`, 'error'); }
+  }
   storeDashboard(chiffrages);
   renderTable();
-  toast('Chiffrage supprimé.', 'success');
+  busy(btn, false);
+  const configPersisted = dashboardOnly ? true : await saveConfigToDrive();
+  const message = dashboardOnly
+    ? 'Retiré du tableau de bord (fichier Drive conservé).'
+    : result?.mode === 'trashed'
+      ? 'Chiffrage déplacé vers la corbeille.'
+      : 'Chiffrage supprimé.';
+  toast(configPersisted ? message : `${message} Configuration conservée localement.`, configPersisted ? 'success' : 'error');
 }
 
 /* ---- Phase builder ---- */
@@ -1798,7 +1840,7 @@ async function createChiffrage() {
   const projet = $('newProjet').value.trim();
   const ticket = $('newTicket').value.trim();
   const dateVal = $('newDate').value;
-  const date = dateVal ? new Date(`${dateVal}T00:00:00`) : null;
+  const date = dateVal ? parseDateText(dateVal) : null;
   const targetFolderId = Config.getClientFolder(client) || null;
 
   if (!client || !projet) {
@@ -1889,7 +1931,12 @@ function renderClientRow(row, c, editing) {
       const newFolderRaw = row.querySelector('.client-edit-folder').value.trim();
       if (!newName || !newFolderRaw) { toast('Nom et dossier requis.', 'error'); return; }
       const newFolder = extractFolderId(newFolderRaw) || newFolderRaw;
-      Config.updateClient(c.name, newName, newFolder);
+      try {
+        Config.updateClient(c.name, newName, newFolder);
+      } catch (e) {
+        toast(e.message, 'error');
+        return;
+      }
       refreshClientDatalist();
       refreshClientSelector();
       renderClientList();
@@ -1931,25 +1978,39 @@ function openSettings() {
   $('cfgOwnConfigId').value = DriveConfig.getFileId() || '';
   $('addClientName').value = '';
   $('addClientFolder').value = '';
-  // Show first-run guide when template or clients are not yet configured.
-  const isNewUser = !c.templateId || !Config.getClients().length;
+  // Show the guide until the connection and first data sources are configured.
+  const isNewUser = !c.clientId || !c.templateId || !Config.getClients().length;
   $('setupGuide').classList.toggle('hidden', !isNewUser);
   renderClientList();
   openModal('settingsModal');
+  if (!c.clientId) {
+    setTimeout(() => $('cfgClientId')?.focus(), 0);
+  }
 }
 
 async function saveSettings() {
   const rawTemplate  = $('cfgTemplateId').value.trim();
   const rawRoot      = $('cfgRootFolderId').value.trim();
+  const clientId      = $('cfgClientId').value.trim();
   const prevSharedId = Config.get('sharedConfigId') || '';
   const rawSharedId  = $('cfgSharedConfigId').value.trim();
   const newSharedId  = extractSpreadsheetId(rawSharedId) || rawSharedId;
-  Config.save({
-    clientId:       $('cfgClientId').value.trim(),
-    templateId:     extractSpreadsheetId(rawTemplate) || rawTemplate,
-    rootFolderId:   extractFolderId(rawRoot) || rawRoot,
-    sharedConfigId: newSharedId,
-  });
+  if (!clientId) {
+    toast('Renseignez d’abord le Client ID Google dans la section « Connexion Google ».', 'error');
+    $('cfgClientId').focus();
+    return;
+  }
+  try {
+    Config.save({
+      clientId,
+      templateId:     extractSpreadsheetId(rawTemplate) || rawTemplate,
+      rootFolderId:   extractFolderId(rawRoot) || rawRoot,
+      sharedConfigId: newSharedId,
+    });
+  } catch (e) {
+    toast(e.message, 'error');
+    return;
+  }
   closeModal('settingsModal');
   refreshClientDatalist();
   refreshClientSelector();
@@ -1973,7 +2034,8 @@ async function addClient() {
   const folderRaw = $('addClientFolder').value.trim();
   if (!name || !folderRaw) { toast('Renseignez le nom et le dossier.', 'error'); return; }
   const folderId = extractFolderId(folderRaw) || folderRaw;
-  Config.upsertClient(name, folderId);
+  try { Config.upsertClient(name, folderId); }
+  catch (e) { toast(e.message, 'error'); return; }
   $('addClientName').value = '';
   $('addClientFolder').value = '';
   renderClientList();
@@ -2046,7 +2108,7 @@ function init() {
   $('btnSignIn').addEventListener('click', async () => {
     if (!Config.get('clientId')) {
       openSettings();
-      toast('Configurez votre OAuth Client ID d\'abord.', 'error');
+      toast('Commencez par renseigner le Client ID Google dans la section « Connexion Google ».', 'error');
       return;
     }
     try { await Auth.signIn(); } catch (e) { toast(e.message, 'error'); }
@@ -2060,7 +2122,19 @@ function init() {
   $('btnCopyConfigId').addEventListener('click', () => {
     const id = $('cfgOwnConfigId').value;
     if (id) {
-      navigator.clipboard.writeText(id)
+      const fallbackCopy = () => {
+        const area = document.createElement('textarea');
+        area.value = id;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed'; area.style.opacity = '0';
+        document.body.appendChild(area); area.select();
+        const ok = document.execCommand('copy');
+        area.remove();
+        if (!ok) throw new Error('fallback');
+      };
+      (navigator.clipboard?.writeText
+        ? navigator.clipboard.writeText(id)
+        : Promise.resolve().then(fallbackCopy))
         .then(() => toast('ID copié dans le presse-papier.', 'success'))
         .catch(() => toast('Copie impossible : autorisez l\'accès au presse-papier.', 'error'));
     }
@@ -2120,7 +2194,7 @@ function init() {
     $('newClient').value = selectedClient;
     $('newProjet').value = '';
     $('newTicket').value = '';
-    $('newDate').value = new Date().toISOString().split('T')[0];
+    $('newDate').value = formatDateInput(new Date());
     phasesData = [{ items: 1 }];
     renderPhaseRows();
     renderRoleCheckboxes(selectedClient);
